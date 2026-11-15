@@ -15,6 +15,16 @@ Lists use British dates, for example Sunday, 15 November 2026, and 24-hour times
 
 After the first successful load, the app works with no signal.
 
+## PIN
+
+The first time you open Fitness on a phone, you choose a PIN of 4 to 6 digits. After that, Fitness asks for the PIN when you open it, and again if you come back after it has been in the background for 3 minutes. The workouts are not shown until the PIN is entered.
+
+The PIN protects the copy on that phone only. Fitness is a static website: anyone who opens the link gets their own empty copy and chooses their own PIN. Your PIN is not an account, it is not sent anywhere, and it does not unlock someone else's phone. The phone stores a salted hash of the PIN, not the PIN itself.
+
+In Settings, Change PIN asks for the current PIN first.
+
+If you forget the PIN, choose Forgotten PIN, then Reset app. That removes the PIN and every workout stored on this phone. You cannot export a backup while Fitness is locked, so the workouts are gone unless you already saved a backup. After five wrong tries, Fitness waits longer before the next try.
+
 ## Add it to your iPhone
 
 Use Safari. Add to Home Screen is not offered the same way in Chrome on an iPhone.
@@ -48,7 +58,7 @@ The file is one JSON document, version 1, with the date it was exported and the 
 
 `.github/workflows/pages.yml` publishes the site when commits land on `main`. It runs the unit tests, then deploys the pages with GitHub's Pages actions.
 
-This repository is private. [GitHub's Pages documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits) says Pages is available for public repositories on GitHub Free, and for private repositories only with GitHub Pro, Team, or Enterprise. The repository visibility has not been changed. Until the account plan or the visibility allows Pages, the deploy job cannot publish a site. The test job in the same workflow does not need Pages.
+[GitHub's Pages documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits) says Pages is available for public repositories on GitHub Free, and for private repositories only with GitHub Pro, Team, or Enterprise. Making this repository public lets that workflow publish the site from `main`. Publishing does not share the workouts: each phone still has its own empty copy.
 
 ## Tests
 

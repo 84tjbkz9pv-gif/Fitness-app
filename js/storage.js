@@ -1,17 +1,22 @@
 import { workoutFromStored, workoutToStored } from './logic.js'
 
 const DB_NAME = 'fitness'
+const DB_VERSION = 2
 const STORE = 'workouts'
+const SETTINGS = 'settings'
 let databasePromise
 
 function openDatabase() {
   if (!databasePromise) {
     databasePromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1)
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
       request.onupgradeneeded = () => {
         const database = request.result
         if (!database.objectStoreNames.contains(STORE)) {
           database.createObjectStore(STORE, { keyPath: 'id' })
+        }
+        if (!database.objectStoreNames.contains(SETTINGS)) {
+          database.createObjectStore(SETTINGS)
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -65,6 +70,69 @@ export async function removeWorkout(id) {
   const database = await openDatabase()
   await new Promise((resolve, reject) => {
     const request = database.transaction(STORE, 'readwrite').objectStore(STORE).delete(id)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function loadPinRecord() {
+  return readSetting('pin')
+}
+
+export async function savePinRecord(record) {
+  await writeSetting('pin', {
+    salt: record.salt,
+    hash: record.hash,
+    iterations: record.iterations,
+  })
+}
+
+export async function loadLockout() {
+  const stored = await readSetting('lockout')
+  if (!stored || !Number.isInteger(stored.failures) || typeof stored.lockedUntil !== 'number') {
+    return { failures: 0, lockedUntil: 0 }
+  }
+  return { failures: stored.failures, lockedUntil: stored.lockedUntil }
+}
+
+export async function saveLockout(lockout) {
+  await writeSetting('lockout', {
+    failures: lockout.failures,
+    lockedUntil: lockout.lockedUntil,
+  })
+}
+
+export async function wipeAllData() {
+  if (databasePromise) {
+    try {
+      const database = await databasePromise
+      database.close()
+    } catch {
+      // Closing a failed connection should not stop the wipe.
+    }
+    databasePromise = null
+  }
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+    request.onblocked = () => resolve()
+  })
+}
+
+async function readSetting(key) {
+  const database = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(SETTINGS, 'readonly').objectStore(SETTINGS).get(key)
+    request.onsuccess = () => resolve(request.result ?? null)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function writeSetting(key, value) {
+  const database = await openDatabase()
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(SETTINGS, 'readwrite').objectStore(SETTINGS).put(value, key)
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
   })

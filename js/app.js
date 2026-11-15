@@ -15,7 +15,28 @@ import {
   backupFilename,
   createBackup,
 } from './logic.js'
-import { keepDataOnThisPhone, loadWorkouts, putWorkout, removeWorkout, replaceWorkouts } from './storage.js'
+import {
+  createPinRecord,
+  lockoutRemainingMs,
+  messageForPin,
+  nextLockout,
+  pinError,
+  shouldLockAfterBackground,
+  verifyPin,
+  waitLabel,
+} from './pin.js'
+import {
+  keepDataOnThisPhone,
+  loadLockout,
+  loadPinRecord,
+  loadWorkouts,
+  putWorkout,
+  removeWorkout,
+  replaceWorkouts,
+  saveLockout,
+  savePinRecord,
+  wipeAllData,
+} from './storage.js'
 
 const ICONS = {
   run: '🏃',
@@ -53,10 +74,28 @@ const importConfirm = document.querySelector('#import-confirm')
 const importSummary = document.querySelector('#import-summary')
 const backupFile = document.querySelector('#backup-file')
 
+const gate = document.querySelector('#gate')
+const gateStatus = document.querySelector('#gate-status')
+const shell = document.querySelector('#shell')
+const setupForm = document.querySelector('#setup-form')
+const unlockForm = document.querySelector('#unlock-form')
+const resetForm = document.querySelector('#reset-form')
+const setupError = document.querySelector('#setup-error')
+const unlockError = document.querySelector('#unlock-error')
+const unlockButton = document.querySelector('#unlock-button')
+const unlockPin = document.querySelector('#unlock-pin')
+const settingsDialog = document.querySelector('#settings')
+const settingsError = document.querySelector('#settings-error')
+
 let workouts = []
 let screen = 'today'
 let editingId = null
 let pendingImport = null
+let pinRecord = null
+let lockout = { failures: 0, lockedUntil: 0 }
+let unlocked = false
+let hiddenAt = null
+let lockTimer = null
 
 for (const type of WORKOUT_TYPES) {
   const option = document.createElement('option')
@@ -93,22 +132,218 @@ backupFile.addEventListener('change', onBackupFile)
 document.querySelector('#import-cancel').addEventListener('click', clearPendingImport)
 document.querySelector('#import-replace').addEventListener('click', importBackup)
 backupDialog.addEventListener('close', clearPendingImport)
+setupForm.addEventListener('submit', onSetPin)
+unlockForm.addEventListener('submit', onUnlock)
+document.querySelector('#forgot-pin').addEventListener('click', () => showGate('reset'))
+document.querySelector('#reset-cancel').addEventListener('click', () => showGate('unlock'))
+resetForm.addEventListener('submit', onReset)
+document.querySelector('#settings-button').addEventListener('click', openSettings)
+document.querySelector('#settings-close').addEventListener('click', () => settingsDialog.close())
+document.querySelector('#pin-change-form').addEventListener('submit', onChangePin)
+document.addEventListener('visibilitychange', onVisibility)
 
 start().catch((error) => {
   console.error(error)
-  showBanner('Could not open saved workouts on this phone.')
-  render()
+  gateStatus.hidden = false
+  gateStatus.textContent = 'Could not open Fitness on this phone.'
 })
 
 async function start() {
-  workouts = await loadWorkouts()
-  render()
+  pinRecord = await loadPinRecord()
+  lockout = await loadLockout()
+  if (pinRecord) showGate('unlock')
+  else showGate('setup')
   keepDataOnThisPhone()
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {
       // The page still works. The copy on the phone is updated the next time it can reach the site.
     })
   }
+}
+
+function showGate(which) {
+  gate.hidden = false
+  shell.hidden = true
+  gateStatus.hidden = true
+  setupForm.hidden = which !== 'setup'
+  unlockForm.hidden = which !== 'unlock'
+  resetForm.hidden = which !== 'reset'
+  if (which === 'unlock') armLockoutTimer()
+}
+
+async function onSetPin(event) {
+  event.preventDefault()
+  const pin = document.querySelector('#setup-pin').value
+  const again = document.querySelector('#setup-pin-again').value
+  const format = pinError(pin)
+  if (format) {
+    showFormError(setupError, messageForPin(format))
+    return
+  }
+  if (pin !== again) {
+    showFormError(setupError, messageForPin('pinMismatch'))
+    return
+  }
+  pinRecord = await createPinRecord(pin)
+  await savePinRecord(pinRecord)
+  document.querySelector('#setup-pin').value = ''
+  document.querySelector('#setup-pin-again').value = ''
+  setupError.hidden = true
+  await unlockApp()
+}
+
+async function onUnlock(event) {
+  event.preventDefault()
+  const now = Date.now()
+  const wait = lockoutRemainingMs(lockout, now)
+  if (wait > 0) {
+    showFormError(unlockError, `Try again in ${waitLabel(wait)}.`)
+    armLockoutTimer()
+    return
+  }
+  const pin = unlockPin.value
+  if (pinError(pin)) {
+    showFormError(unlockError, messageForPin('pinFormat'))
+    return
+  }
+  const correct = await verifyPin(pin, pinRecord)
+  lockout = nextLockout(lockout, Date.now(), correct)
+  await saveLockout(lockout)
+  unlockPin.value = ''
+  if (!correct) {
+    const again = lockoutRemainingMs(lockout, Date.now())
+    showFormError(unlockError, again > 0
+      ? `${messageForPin('pinWrong')} Try again in ${waitLabel(again)}.`
+      : messageForPin('pinWrong'))
+    armLockoutTimer()
+    return
+  }
+  unlockError.hidden = true
+  await unlockApp()
+}
+
+async function onReset(event) {
+  event.preventDefault()
+  await wipeAllData()
+  pinRecord = null
+  lockout = { failures: 0, lockedUntil: 0 }
+  unlocked = false
+  workouts = []
+  clearInterval(lockTimer)
+  document.querySelector('#setup-pin').value = ''
+  document.querySelector('#setup-pin-again').value = ''
+  showGate('setup')
+}
+
+function openSettings() {
+  settingsError.hidden = true
+  document.querySelector('#current-pin').value = ''
+  document.querySelector('#new-pin').value = ''
+  document.querySelector('#new-pin-again').value = ''
+  settingsDialog.showModal()
+}
+
+async function onChangePin(event) {
+  event.preventDefault()
+  const now = Date.now()
+  const wait = lockoutRemainingMs(lockout, now)
+  if (wait > 0) {
+    showFormError(settingsError, `Try again in ${waitLabel(wait)}.`)
+    return
+  }
+  const current = document.querySelector('#current-pin').value
+  const next = document.querySelector('#new-pin').value
+  const again = document.querySelector('#new-pin-again').value
+  if (pinError(current)) {
+    showFormError(settingsError, messageForPin('pinFormat'))
+    return
+  }
+  const correct = await verifyPin(current, pinRecord)
+  lockout = nextLockout(lockout, Date.now(), correct)
+  await saveLockout(lockout)
+  if (!correct) {
+    document.querySelector('#current-pin').value = ''
+    const remaining = lockoutRemainingMs(lockout, Date.now())
+    showFormError(settingsError, remaining > 0
+      ? `${messageForPin('pinWrong')} Try again in ${waitLabel(remaining)}.`
+      : messageForPin('pinWrong'))
+    return
+  }
+  const format = pinError(next)
+  if (format) {
+    showFormError(settingsError, messageForPin(format))
+    return
+  }
+  if (next !== again) {
+    showFormError(settingsError, messageForPin('pinMismatch'))
+    return
+  }
+  pinRecord = await createPinRecord(next)
+  await savePinRecord(pinRecord)
+  document.querySelector('#current-pin').value = ''
+  document.querySelector('#new-pin').value = ''
+  document.querySelector('#new-pin-again').value = ''
+  settingsDialog.close()
+  showBanner('PIN changed.', 'success')
+}
+
+async function unlockApp() {
+  unlocked = true
+  hiddenAt = null
+  clearInterval(lockTimer)
+  unlockButton.disabled = false
+  gate.hidden = true
+  shell.hidden = false
+  try {
+    workouts = await loadWorkouts()
+  } catch (error) {
+    console.error(error)
+    workouts = []
+    showBanner('Could not open saved workouts on this phone.')
+  }
+  render()
+}
+
+function lockApp() {
+  unlocked = false
+  workouts = []
+  hiddenAt = null
+  if (editor.open) editor.close()
+  if (backupDialog.open) backupDialog.close()
+  if (settingsDialog.open) settingsDialog.close()
+  main.replaceChildren()
+  shell.hidden = true
+  unlockPin.value = ''
+  showGate('unlock')
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'hidden') {
+    if (unlocked) hiddenAt = Date.now()
+    return
+  }
+  if (unlocked && shouldLockAfterBackground(hiddenAt, Date.now())) lockApp()
+}
+
+function armLockoutTimer() {
+  clearInterval(lockTimer)
+  const tick = () => {
+    const wait = lockoutRemainingMs(lockout, Date.now())
+    unlockButton.disabled = wait > 0
+    if (wait <= 0) {
+      clearInterval(lockTimer)
+      return
+    }
+    unlockError.hidden = false
+    unlockError.textContent = `Try again in ${waitLabel(wait)}.`
+  }
+  tick()
+  if (lockoutRemainingMs(lockout, Date.now()) > 0) lockTimer = setInterval(tick, 250)
+}
+
+function showFormError(element, message) {
+  element.hidden = false
+  element.textContent = message
 }
 
 function showScreen(next) {
