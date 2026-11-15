@@ -850,3 +850,9 @@ html.plan-dragging { touch-action: none; }
 .routine-picks { display: grid; gap: 8px; }
 
 .goal-card .food-kcal { font-size: 1.15rem; }
+
+.weight-chart { width: 100%; height: auto; background: var(--card); border-radius: 16px; }
+
+.overview { display: grid; gap: 12px; }
+
+.overview h2 { margin: 8px 0 0; font-size: 1.15rem; }

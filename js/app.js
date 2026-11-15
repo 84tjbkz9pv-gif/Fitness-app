@@ -20,6 +20,8 @@ import { foodScreen, foodTodayCard, openFoodDialog, openTargetSheet } from './fo
 import { fetchOffProduct } from './off.js'
 import { openPortion, openScanner } from './scanner.js'
 import { goalCard, openPlanSetup } from './training-view.js'
+import { bestEstimates, isLosing, recentWeekReports } from './overview.js'
+import { openWeightDialog, overviewScreen, weightTodayCard } from './overview-view.js'
 import {
   generatePlanEntries,
   liftProgress,
@@ -53,6 +55,7 @@ import {
   loadPlans,
   loadProducts,
   loadTrainingPlan,
+  loadWeights,
   loadRoutines,
   loadSessions,
   loadWorkouts,
@@ -76,6 +79,9 @@ import {
   replaceWorkouts,
   saveFoodProfile,
   saveTrainingPlan,
+  putWeight,
+  deleteWeight,
+  replaceWeights,
   saveKcalTarget,
   saveLockout,
   savePinRecord,
@@ -146,6 +152,7 @@ let products = []
 let kcalTarget = null
 let foodProfile = null
 let trainingPlan = null
+let weights = []
 let kcalMap = null
 let selectedKey = null
 let weekMonday = null
@@ -316,6 +323,7 @@ async function onReset(event) {
   plans = []
   foods = []
   products = []
+  weights = []
   kcalTarget = null
   foodProfile = null
   trainingPlan = null
@@ -386,7 +394,7 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan, weights] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
@@ -397,6 +405,7 @@ async function unlockApp() {
       loadFoodProfile(),
       loadProducts(),
       loadTrainingPlan(),
+      loadWeights(),
     ])
     foodProfile = foodProfileFromStored(foodProfile)
     if (foodProfile === undefined) foodProfile = null
@@ -411,6 +420,7 @@ async function unlockApp() {
     plans = []
     foods = []
     products = []
+    weights = []
     kcalTarget = null
     foodProfile = null
     trainingPlan = null
@@ -429,6 +439,7 @@ function lockApp() {
   plans = []
   foods = []
   products = []
+  weights = []
   kcalTarget = null
   foodProfile = null
   trainingPlan = null
@@ -485,7 +496,7 @@ function showScreen(next) {
 function render() {
   kcalMap = null
   const now = new Date()
-  const titles = { today: 'Today', train: 'Train', calendar: 'Calendar', food: 'Food', history: 'History' }
+  const titles = { today: 'Today', train: 'Train', calendar: 'Calendar', food: 'Food', history: 'History', overview: 'Overview' }
   screenTitle.textContent = titles[screen]
   const selection = plannerSelection(now)
   screenDate.textContent = screen === 'today' || screen === 'food' ? londonLong(selection.selectedKey) : ''
@@ -516,7 +527,26 @@ function render() {
       }))
     }
     today.append(foodTodayCard(foodState(selection), () => showScreen('food')))
+    today.append(weightTodayCard(latestWeight(), weightActions(selection.todayKey)))
     main.replaceChildren(today)
+    return
+  }
+  if (screen === 'overview') {
+    main.replaceChildren(overviewScreen({
+      weights,
+      reports: recentWeekReports({
+        today: selection.todayKey,
+        foods,
+        plans,
+        sessions,
+        targetFor: kcalOn,
+        losing: isLosing(trainingPlan, foodProfile),
+      }),
+      estimates: bestEstimates(sessions, (id) => exerciseName(id, customExercises)),
+    }, {
+      back: () => showScreen('today'),
+      logWeight: (entry) => openWeightDialog(entry, selection.todayKey, weightSaveActions()),
+    }))
     return
   }
   main.replaceChildren(historyView(now))
@@ -550,7 +580,7 @@ function foodState(selection) {
     foods,
     kcalTarget: kcalOn(selection.selectedKey),
     profile: foodProfile,
-    weightKg: weightForCalculator(foodProfile, []),
+    weightKg: weightForCalculator(foodProfile, weights),
   }
 }
 
@@ -769,12 +799,61 @@ function plannerActions() {
       openPlanSetup({
         today: londonKey(new Date()),
         profile: foodProfile,
-        weightKg: weightForCalculator(foodProfile, []),
+        weightKg: weightForCalculator(foodProfile, weights),
         routines: routines.slice().sort((left, right) => left.name.localeCompare(right.name, 'en-GB')),
         plan: trainingPlan,
       }, { save: commitTrainingPlan })
     },
   }
+}
+
+function latestWeight() {
+  return weights.slice().sort((left, right) => right.date.localeCompare(left.date))[0] ?? null
+}
+
+function weightActions(date) {
+  return {
+    logWeight(entry) {
+      openWeightDialog(entry, date, weightSaveActions())
+    },
+    openOverview() {
+      showScreen('overview')
+    },
+  }
+}
+
+function weightSaveActions() {
+  return { saveWeight: storeWeight, deleteWeight: removeWeight }
+}
+
+async function storeWeight(value) {
+  const sameDay = weights.find((item) => item.date === value.date)
+  const id = sameDay?.id ?? value.id ?? newId()
+  const entry = { id, date: value.date, kg: value.kg }
+  const previousId = value.id && value.id !== id ? value.id : null
+  try {
+    await putWeight(entry)
+    if (previousId) await deleteWeight(previousId)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not save this weight on this phone.')
+    return
+  }
+  weights = weights.filter((item) => item.id !== id && item.id !== previousId && item.date !== entry.date)
+  weights.push(entry)
+  render()
+}
+
+async function removeWeight(id) {
+  try {
+    await deleteWeight(id)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not delete this weight on this phone.')
+    return
+  }
+  weights = weights.filter((item) => item.id !== id)
+  render()
 }
 
 function kcalOn(date) {
@@ -1124,6 +1203,7 @@ async function exportBackup() {
       kcalTarget,
       foodProfile,
       trainingPlan,
+      weights,
     }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
@@ -1186,6 +1266,7 @@ async function importBackup() {
     await saveKcalTarget(pendingImport.kcalTarget ?? null)
     await saveFoodProfile(pendingImport.foodProfile ?? null)
     await saveTrainingPlan(pendingImport.trainingPlan ?? null)
+    await replaceWeights(pendingImport.weights ?? [])
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
@@ -1200,6 +1281,7 @@ async function importBackup() {
   kcalTarget = pendingImport.kcalTarget ?? null
   foodProfile = pendingImport.foodProfile ?? null
   trainingPlan = pendingImport.trainingPlan ?? null
+  weights = pendingImport.weights ?? []
   trainer.reset()
   backupDialog.close()
   render()
@@ -1207,7 +1289,7 @@ async function importBackup() {
 }
 
 function importSummaryText(count) {
-  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, and food log on this phone.'
+  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, food log, and weight log on this phone.'
   if (count === 0) return `This backup has no workouts. ${tail}`
   if (count === 1) return `This backup has 1 workout. ${tail}`
   return `This backup has ${count} workouts. ${tail}`
