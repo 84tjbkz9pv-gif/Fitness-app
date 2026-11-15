@@ -14,6 +14,7 @@ import {
   parseTarget,
   recentFoods,
 } from './food.js'
+import { savedMealButtons } from './meal-view.js'
 
 export function foodScreen(state, actions) {
   const wrap = document.createElement('div')
@@ -24,6 +25,7 @@ export function foodScreen(state, actions) {
     markDay: (date) => marked.has(date),
     markLabel: 'has food',
   }, actions))
+  wrap.append(savedMealsCard(state, actions))
   wrap.append(totalCard(state, actions))
   for (const meal of MEALS) wrap.append(mealSection(meal, state, actions))
   return wrap
@@ -50,7 +52,7 @@ export function foodTodayCard(state, onOpen) {
   return button
 }
 
-export function openFoodDialog({ meal, entry, foods, products = [], date, barcode = null }, actions) {
+export function openFoodDialog({ meal, entry, foods, products = [], savedMeals = [], date, barcode = null }, actions) {
   const dialog = document.createElement('dialog')
   dialog.className = 'editor'
   const form = document.createElement('form')
@@ -77,7 +79,17 @@ export function openFoodDialog({ meal, entry, foods, products = [], date, barcod
     note.textContent = 'Not found. The barcode is kept so you can type the kcal.'
     form.append(note)
   }
+  if (entry?.ingredients?.length) {
+    const note = document.createElement('p')
+    note.className = 'help'
+    note.textContent = entry.ingredients.map((item) => `${item.name} · ${item.amount}`).join(', ')
+    form.append(note)
+  }
   if (!entry) {
+    form.append(savedMealButtons(savedMeals, (saved) => {
+      dialog.close()
+      actions.logMeal(saved, meal)
+    }))
     const scan = document.createElement('button')
     scan.type = 'button'
     scan.className = 'wide secondary'
@@ -275,6 +287,28 @@ function totalCard(state, actions) {
   return card
 }
 
+function savedMealsCard(state, actions) {
+  const card = document.createElement('article')
+  card.className = 'plan-card'
+  const heading = document.createElement('h2')
+  heading.textContent = 'Meals'
+  const create = document.createElement('button')
+  create.type = 'button'
+  create.className = 'text-add'
+  create.textContent = 'Create meal'
+  create.addEventListener('click', () => actions.createMeal())
+  card.append(heading, create)
+  for (const meal of state.savedMeals ?? []) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'food-item'
+    button.textContent = meal.name
+    button.addEventListener('click', () => actions.editMeal(meal))
+    card.append(button)
+  }
+  return card
+}
+
 function mealSection(meal, state, actions) {
   const section = document.createElement('section')
   section.className = 'meal'
@@ -303,6 +337,11 @@ function mealSection(meal, state, actions) {
       const kcal = document.createElement('strong')
       kcal.textContent = `${formatKcal(entry.kcal)} kcal`
       button.append(name, kcal)
+      if (entry.ingredients?.length) {
+        const detail = document.createElement('span')
+        detail.textContent = entry.ingredients.map((item) => item.name).join(', ')
+        button.append(detail)
+      }
       button.addEventListener('click', () => actions.editFood(entry))
       item.append(button)
       list.append(item)

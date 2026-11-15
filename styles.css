@@ -835,6 +835,13 @@ html.plan-dragging { touch-action: none; }
   text-align: left;
 }
 
+div.food-item {
+  display: grid;
+  gap: 8px;
+}
+
+div.food-item input { width: 8rem; min-height: 44px; }
+
 .estimate { display: grid; gap: 8px; }
 
 .weekday-picks { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }

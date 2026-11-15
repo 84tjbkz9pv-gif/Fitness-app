@@ -1,11 +1,12 @@
 import { foodFromStored } from './food.js'
 import { weightFromStored } from './overview.js'
 import { workoutFromStored, workoutToStored } from './logic.js'
+import { mealFromStored } from './meals.js'
 import { planFromStored } from './plan.js'
 import { runFromStored } from './runs.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 8
+const DB_VERSION = 9
 const STORE = 'workouts'
 const SETTINGS = 'settings'
 const ROUTINES = 'routines'
@@ -16,6 +17,7 @@ const FOODS = 'foods'
 const PRODUCTS = 'products'
 const WEIGHTS = 'weights'
 const RUNS = 'runs'
+const SAVED_MEALS = 'savedMeals'
 let databasePromise
 
 function openDatabase() {
@@ -41,6 +43,9 @@ function openDatabase() {
         }
         if (!database.objectStoreNames.contains(RUNS)) {
           database.createObjectStore(RUNS, { keyPath: 'id' })
+        }
+        if (!database.objectStoreNames.contains(SAVED_MEALS)) {
+          database.createObjectStore(SAVED_MEALS, { keyPath: 'id' })
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -187,6 +192,23 @@ export function replaceWeights(weights) {
 
 export function loadProducts() {
   return readAll(PRODUCTS)
+}
+
+export async function loadSavedMeals() {
+  const rows = await readAll(SAVED_MEALS)
+  return rows.map(mealFromStored).filter(Boolean)
+}
+
+export function putSavedMeal(meal) {
+  return putRecord(SAVED_MEALS, meal)
+}
+
+export function deleteSavedMeal(id) {
+  return deleteRecord(SAVED_MEALS, id)
+}
+
+export function replaceSavedMeals(meals) {
+  return replaceAll(SAVED_MEALS, meals)
 }
 
 export function putProduct(product) {

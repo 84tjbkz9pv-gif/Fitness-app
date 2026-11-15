@@ -70,7 +70,7 @@ test('a logged run counts for its week and a version 6 backup keeps it', () => {
       notes: 'Park',
     }],
   })
-  assert.equal(backup.version, 7)
+  assert.equal(backup.version, 8)
   const parsed = parseBackup(JSON.stringify(backup))
   assert.equal(parsed.runs[0].notes, 'Park')
   assert.equal(parsed.runs[0].actualMinutes, 32)
