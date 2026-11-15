@@ -207,7 +207,7 @@ main {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
   padding: 8px 12px calc(8px + var(--safe-bottom));
   border-top: 1px solid var(--line);
@@ -414,3 +414,41 @@ textarea { min-height: 96px; resize: vertical; }
 }
 
 .danger-button { background: var(--danger); color: #ffffff; }
+
+.train { display: grid; gap: 12px; }
+.gym-block {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.gym-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.exercise-link { font-weight: 700; color: var(--text); padding: 0; justify-self: start; }
+.set-row { display: grid; grid-template-columns: 28px 1fr 1fr auto auto; gap: 6px; align-items: center; }
+.set-number { color: var(--muted); font-weight: 700; }
+.previous { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.tick, .pb {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+.tick.on { background: var(--accent); color: #fff; }
+.pb { display: grid; place-items: center; padding: 0 8px; }
+.routine-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; align-items: center; }
+.inline { display: flex; gap: 8px; }
+.inline input { flex: 1; }
+.picker { display: grid; gap: 8px; max-height: 50vh; overflow: auto; }
+.chart { width: 100%; height: auto; color: var(--accent); }
+.chart text { fill: var(--muted); font-size: 12px; }
+.pb-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.best-line { margin: 0; }
+.quiet.on { text-decoration: underline; }
+
+@media (prefers-color-scheme: dark) {
+  .tick.on { color: #102117; }
+}

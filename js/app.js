@@ -3,7 +3,6 @@ import {
   dayHeading,
   distanceFieldText,
   formatDateTimeLocal,
-  groupedByDay,
   longDate,
   messageFor,
   parseDateTimeLocal,
@@ -11,10 +10,11 @@ import {
   parseBackup,
   validate,
   workoutSummary,
-  workoutsOnDay,
   backupFilename,
   createBackup,
 } from './logic.js'
+import { createTrainer } from './train.js'
+import { doneSetCount, sessionMinutes } from './gym.js'
 import {
   createPinRecord,
   lockoutRemainingMs,
@@ -29,9 +29,20 @@ import {
   keepDataOnThisPhone,
   loadLockout,
   loadPinRecord,
+  loadExercises,
+  loadRoutines,
+  loadSessions,
   loadWorkouts,
+  putExercise,
+  putRoutine,
+  putSession,
   putWorkout,
+  deleteRoutine,
+  deleteSession,
   removeWorkout,
+  replaceExercises,
+  replaceRoutines,
+  replaceSessions,
   replaceWorkouts,
   saveLockout,
   savePinRecord,
@@ -54,6 +65,7 @@ const screenDate = document.querySelector('#screen-date')
 const banner = document.querySelector('#banner')
 const addButton = document.querySelector('#add-button')
 const tabToday = document.querySelector('#tab-today')
+const tabTrain = document.querySelector('#tab-train')
 const tabHistory = document.querySelector('#tab-history')
 const editor = document.querySelector('#editor')
 const form = document.querySelector('#workout-form')
@@ -88,6 +100,9 @@ const settingsDialog = document.querySelector('#settings')
 const settingsError = document.querySelector('#settings-error')
 
 let workouts = []
+let routines = []
+let sessions = []
+let customExercises = []
 let screen = 'today'
 let editingId = null
 let pendingImport = null
@@ -106,6 +121,7 @@ for (const type of WORKOUT_TYPES) {
 
 addButton.addEventListener('click', () => openEditor(null))
 tabToday.addEventListener('click', () => showScreen('today'))
+tabTrain.addEventListener('click', () => showScreen('train'))
 tabHistory.addEventListener('click', () => showScreen('history'))
 main.addEventListener('click', onMainClick)
 form.addEventListener('submit', onSave)
@@ -229,6 +245,10 @@ async function onReset(event) {
   lockout = { failures: 0, lockedUntil: 0 }
   unlocked = false
   workouts = []
+  routines = []
+  sessions = []
+  customExercises = []
+  trainer.reset()
   clearInterval(lockTimer)
   document.querySelector('#setup-pin').value = ''
   document.querySelector('#setup-pin-again').value = ''
@@ -295,10 +315,18 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    workouts = await loadWorkouts()
+    ;[workouts, routines, sessions, customExercises] = await Promise.all([
+      loadWorkouts(),
+      loadRoutines(),
+      loadSessions(),
+      loadExercises(),
+    ])
   } catch (error) {
     console.error(error)
     workouts = []
+    routines = []
+    sessions = []
+    customExercises = []
     showBanner('Could not open saved workouts on this phone.')
   }
   render()
@@ -307,6 +335,10 @@ async function unlockApp() {
 function lockApp() {
   unlocked = false
   workouts = []
+  routines = []
+  sessions = []
+  customExercises = []
+  trainer.reset()
   hiddenAt = null
   if (editor.open) editor.close()
   if (backupDialog.open) backupDialog.close()
@@ -353,35 +385,69 @@ function showScreen(next) {
 
 function render() {
   const now = new Date()
-  const today = screen === 'today'
-  screenTitle.textContent = today ? 'Today' : 'History'
-  screenDate.textContent = today ? longDate(now) : ''
-  screenDate.hidden = !today
-  tabToday.setAttribute('aria-current', today ? 'page' : 'false')
-  tabHistory.setAttribute('aria-current', today ? 'false' : 'page')
-  main.replaceChildren(today ? todayView(now) : historyView(now))
+  const titles = { today: 'Today', train: 'Train', history: 'History' }
+  screenTitle.textContent = titles[screen]
+  screenDate.textContent = screen === 'today' ? longDate(now) : ''
+  screenDate.hidden = screen !== 'today'
+  tabToday.setAttribute('aria-current', screen === 'today' ? 'page' : 'false')
+  tabTrain.setAttribute('aria-current', screen === 'train' ? 'page' : 'false')
+  tabHistory.setAttribute('aria-current', screen === 'history' ? 'page' : 'false')
+  if (screen === 'train') {
+    trainer.render(main)
+    return
+  }
+  main.replaceChildren(screen === 'today' ? todayView(now) : historyView(now))
 }
 
 function todayView(now) {
-  const todays = workoutsOnDay(workouts, now)
-  if (todays.length === 0) {
+  const entries = entriesOnDay(now)
+  if (entries.length === 0) {
     return emptyState(
       'Nothing logged today',
-      'Add a run, walk, or any other session when you are ready.',
+      'Add a run, walk, or gym session when you are ready.',
     )
   }
-  return workoutList([{ day: now, workouts: todays }], now, false)
+  return activityList([{ day: now, entries }], now, false)
 }
 
 function historyView(now) {
-  const groups = groupedByDay(workouts)
+  const groups = activityGroups()
   if (groups.length === 0) {
     return emptyState(
       'No workouts yet',
       'Workouts you add show up here, grouped by day.',
     )
   }
-  return workoutList(groups, now, true)
+  return activityList(groups, now, true)
+}
+
+function entriesOnDay(day) {
+  return activityGroups()
+    .filter((group) => dayKey(group.day) === dayKey(day))
+    .flatMap((group) => group.entries)
+}
+
+function activityGroups() {
+  const items = [
+    ...workouts.map((workout) => ({ kind: 'cardio', at: workout.startedAt, workout })),
+    ...sessions
+      .filter((session) => session.finishedAt)
+      .map((session) => ({ kind: 'gym', at: session.startedAt, session })),
+  ]
+  const groups = new Map()
+  for (const item of items) {
+    const key = dayKey(item.at)
+    const list = groups.get(key)
+    if (list) list.push(item)
+    else groups.set(key, [item])
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => (left < right ? 1 : left > right ? -1 : 0))
+    .map(([key, entries]) => ({
+      key,
+      day: entries[0].at,
+      entries: entries.slice().sort((left, right) => left.at - right.at),
+    }))
 }
 
 function emptyState(title, copy) {
@@ -399,7 +465,7 @@ function emptyState(title, copy) {
   return wrap
 }
 
-function workoutList(groups, now, showHeadings) {
+function activityList(groups, now, showHeadings) {
   const list = document.createElement('ul')
   list.className = 'days'
   for (const group of groups) {
@@ -412,11 +478,36 @@ function workoutList(groups, now, showHeadings) {
     }
     const items = document.createElement('ul')
     items.className = 'workouts'
-    for (const workout of group.workouts) items.append(workoutItem(workout))
+    for (const entry of group.entries) items.append(entry.kind === 'gym' ? gymItem(entry.session) : workoutItem(entry.workout))
     section.append(items)
     list.append(section)
   }
   return list
+}
+
+function gymItem(session) {
+  const item = document.createElement('li')
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'workout'
+  button.dataset.session = session.id
+  const badge = document.createElement('span')
+  badge.className = 'badge'
+  badge.setAttribute('aria-hidden', 'true')
+  badge.textContent = '🏋️'
+  const text = document.createElement('span')
+  text.className = 'workout-text'
+  const title = document.createElement('span')
+  title.className = 'workout-title'
+  title.textContent = session.name
+  const summary = document.createElement('span')
+  summary.className = 'workout-summary'
+  const minutes = sessionMinutes(session)
+  summary.textContent = `${timeLabel(session.startedAt)} · ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} · ${doneSetCount(session)} sets`
+  text.append(title, summary)
+  button.append(badge, text)
+  item.append(button)
+  return item
 }
 
 function workoutItem(workout) {
@@ -452,6 +543,15 @@ function workoutItem(workout) {
 }
 
 function onMainClick(event) {
+  const gymButton = event.target.closest('[data-session]')
+  if (gymButton) {
+    const session = sessions.find((item) => item.id === gymButton.dataset.session)
+    if (!session) return
+    screen = 'train'
+    trainer.showSession(session)
+    render()
+    return
+  }
   const button = event.target.closest('.workout')
   if (!button) return
   const workout = workouts.find((item) => item.id === button.dataset.id)
@@ -531,7 +631,11 @@ async function exportBackup() {
   backupMessage.hidden = true
   const exportedAt = new Date()
   const file = new File(
-    [`${JSON.stringify(createBackup(workouts, exportedAt), null, 2)}\n`],
+    [`${JSON.stringify(createBackup(workouts, exportedAt, {
+      exercises: customExercises,
+      routines,
+      sessions,
+    }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
   )
@@ -576,7 +680,7 @@ async function onBackupFile() {
     showBackupMessage(messageFor(parsed.error))
     return
   }
-  pendingImport = parsed.workouts
+  pendingImport = parsed
   importSummary.textContent = importSummaryText(parsed.workouts.length)
   importConfirm.hidden = false
 }
@@ -584,22 +688,30 @@ async function onBackupFile() {
 async function importBackup() {
   if (!pendingImport) return
   try {
-    await replaceWorkouts(pendingImport)
+    await replaceWorkouts(pendingImport.workouts)
+    await replaceRoutines(pendingImport.routines)
+    await replaceSessions(pendingImport.sessions)
+    await replaceExercises(pendingImport.exercises)
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
     return
   }
-  workouts = pendingImport
+  workouts = pendingImport.workouts
+  routines = pendingImport.routines
+  sessions = pendingImport.sessions
+  customExercises = pendingImport.exercises
+  trainer.reset()
   backupDialog.close()
   render()
   showBanner('Backup imported.', 'success')
 }
 
 function importSummaryText(count) {
-  if (count === 0) return 'This backup has no workouts. Importing removes the workouts on this phone.'
-  if (count === 1) return 'This backup has 1 workout. Importing replaces the workouts on this phone.'
-  return `This backup has ${count} workouts. Importing replaces the workouts on this phone.`
+  const tail = 'Importing replaces the workouts, routines, and gym sessions on this phone.'
+  if (count === 0) return `This backup has no workouts. ${tail}`
+  if (count === 1) return `This backup has 1 workout. ${tail}`
+  return `This backup has ${count} workouts. ${tail}`
 }
 
 function showBackupMessage(message) {
@@ -616,6 +728,42 @@ function showBanner(message, kind = 'error') {
   banner.hidden = false
   banner.textContent = message
   banner.classList.toggle('success', kind === 'success')
+}
+
+const trainer = createTrainer({
+  routines: () => routines,
+  sessions: () => sessions,
+  exercises: () => customExercises,
+  newId,
+  refresh() {
+    if (unlocked && screen === 'train') render()
+  },
+  async putRoutine(routine) {
+    await putRoutine(routine)
+    upsert(routines, routine)
+  },
+  async deleteRoutine(id) {
+    await deleteRoutine(id)
+    routines = routines.filter((routine) => routine.id !== id)
+  },
+  async putSession(session) {
+    await putSession(session)
+    upsert(sessions, session)
+  },
+  async deleteSession(id) {
+    await deleteSession(id)
+    sessions = sessions.filter((session) => session.id !== id)
+  },
+  async putExercise(exercise) {
+    await putExercise(exercise)
+    upsert(customExercises, exercise)
+  },
+})
+
+function upsert(list, record) {
+  const index = list.findIndex((item) => item.id === record.id)
+  if (index === -1) list.push(record)
+  else list[index] = record
 }
 
 function newId() {

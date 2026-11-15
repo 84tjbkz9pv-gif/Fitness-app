@@ -8,7 +8,7 @@ export const WORKOUT_TYPES = [
   { id: 'other', title: 'Other' },
 ]
 
-export const BACKUP_VERSION = 1
+export const BACKUP_VERSION = 2
 
 const MESSAGES = {
   typeMissing: 'Choose a workout type.',
@@ -22,6 +22,9 @@ const MESSAGES = {
   backupVersion: 'This backup is from a different version of Fitness.',
   backupWorkout: 'This backup contains a workout that could not be read.',
   backupDuplicate: 'This backup lists the same workout twice.',
+  backupExercise: 'This backup contains an exercise that could not be read.',
+  backupRoutine: 'This backup contains a routine that could not be read.',
+  backupSession: 'This backup contains a gym session that could not be read.',
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -78,11 +81,14 @@ export function workoutToStored(workout) {
   }
 }
 
-export function createBackup(workouts, exportedAt = new Date()) {
+export function createBackup(workouts, exportedAt = new Date(), extra = {}) {
   return {
     version: BACKUP_VERSION,
     exportedAt: exportedAt.toISOString(),
     workouts: workouts.slice().sort(compareWorkouts).map(workoutToStored),
+    exercises: (extra.exercises ?? []).slice().sort((left, right) => left.id.localeCompare(right.id)).map(exerciseToStored),
+    routines: (extra.routines ?? []).slice().sort((left, right) => left.id.localeCompare(right.id)).map(routineToStored),
+    sessions: (extra.sessions ?? []).slice().sort((left, right) => left.startedAt - right.startedAt).map(sessionToStored),
   }
 }
 
@@ -102,23 +108,32 @@ export function parseBackup(input) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) {
     return { ok: false, error: 'backupNotFitness' }
   }
-  if (document.version !== BACKUP_VERSION) {
+  if (document.version !== 1 && document.version !== 2) {
     return { ok: false, error: 'backupVersion' }
   }
   if (!Array.isArray(document.workouts)) {
     return { ok: false, error: 'backupNotFitness' }
   }
 
-  const workouts = []
-  const seen = new Set()
-  for (const row of document.workouts) {
-    const workout = workoutFromStored(row)
-    if (!workout) return { ok: false, error: 'backupWorkout' }
-    if (seen.has(workout.id)) return { ok: false, error: 'backupDuplicate' }
-    seen.add(workout.id)
-    workouts.push(workout)
+  const workouts = readRecords(document.workouts, workoutFromStored, 'backupWorkout')
+  if (!workouts.ok) return workouts
+  if (document.version === 1) {
+    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [] }
   }
-  return { ok: true, workouts }
+
+  const exercises = readRecords(document.exercises ?? [], exerciseFromStored, 'backupExercise')
+  if (!exercises.ok) return exercises
+  const routines = readRecords(document.routines ?? [], routineFromStored, 'backupRoutine')
+  if (!routines.ok) return routines
+  const sessions = readRecords(document.sessions ?? [], sessionFromStored, 'backupSession')
+  if (!sessions.ok) return sessions
+  return {
+    ok: true,
+    workouts: workouts.items,
+    exercises: exercises.items,
+    routines: routines.items,
+    sessions: sessions.items,
+  }
 }
 
 export function workoutFromStored(stored) {
@@ -140,6 +155,132 @@ export function workoutFromStored(stored) {
     distanceKilometres: distance,
     notes: stored.notes,
   }
+}
+
+function readRecords(rows, convert, error) {
+  if (!Array.isArray(rows)) return { ok: false, error }
+  const items = []
+  const seen = new Set()
+  for (const row of rows) {
+    const item = convert(row)
+    if (!item) return { ok: false, error }
+    if (seen.has(item.id)) return { ok: false, error: 'backupDuplicate' }
+    seen.add(item.id)
+    items.push(item)
+  }
+  return { ok: true, items }
+}
+
+function exerciseToStored(exercise) {
+  return { id: exercise.id, name: exercise.name }
+}
+
+function exerciseFromStored(stored) {
+  if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
+  const name = typeof stored.name === 'string' ? stored.name.trim() : ''
+  if (name === '' || name.length > 40) return null
+  return { id: stored.id, name }
+}
+
+function routineToStored(routine) {
+  return {
+    id: routine.id,
+    name: routine.name,
+    exercises: routine.exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      sets: exercise.sets.map((set) => ({ reps: set.reps ?? null, weightKg: set.weightKg ?? null })),
+    })),
+  }
+}
+
+function routineFromStored(stored) {
+  if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
+  const name = typeof stored.name === 'string' ? stored.name.trim() : ''
+  if (name === '' || name.length > 40 || !Array.isArray(stored.exercises) || stored.exercises.length === 0) return null
+  const exercises = []
+  for (const exercise of stored.exercises) {
+    if (!exercise || typeof exercise.exerciseId !== 'string' || exercise.exerciseId === '') return null
+    if (!Array.isArray(exercise.sets) || exercise.sets.length === 0) return null
+    const sets = []
+    for (const set of exercise.sets) {
+      const planned = optionalTarget(set)
+      if (!planned) return null
+      sets.push(planned)
+    }
+    exercises.push({ exerciseId: exercise.exerciseId, sets })
+  }
+  return { id: stored.id, name, exercises }
+}
+
+function sessionToStored(session) {
+  return {
+    id: session.id,
+    name: session.name,
+    routineId: session.routineId,
+    startedAt: session.startedAt.toISOString(),
+    finishedAt: session.finishedAt ? session.finishedAt.toISOString() : null,
+    exercises: session.exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      sets: exercise.sets.map((set) => ({
+        reps: set.reps ?? null,
+        weightKg: set.weightKg ?? null,
+        done: set.done === true,
+      })),
+    })),
+  }
+}
+
+function sessionFromStored(stored) {
+  if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
+  const name = typeof stored.name === 'string' ? stored.name.trim() : ''
+  if (name === '' || name.length > 40 || !Array.isArray(stored.exercises)) return null
+  const startedAt = new Date(stored.startedAt)
+  if (Number.isNaN(startedAt.getTime())) return null
+  let finishedAt = null
+  if (stored.finishedAt != null) {
+    finishedAt = new Date(stored.finishedAt)
+    if (Number.isNaN(finishedAt.getTime())) return null
+  }
+  const routineId = typeof stored.routineId === 'string' && stored.routineId !== '' ? stored.routineId : null
+  const exercises = []
+  for (const exercise of stored.exercises) {
+    if (!exercise || typeof exercise.exerciseId !== 'string' || exercise.exerciseId === '') return null
+    if (!Array.isArray(exercise.sets)) return null
+    const sets = []
+    for (const set of exercise.sets) {
+      const logged = loggedSet(set)
+      if (!logged) return null
+      sets.push(logged)
+    }
+    exercises.push({ exerciseId: exercise.exerciseId, sets })
+  }
+  return { id: stored.id, name, routineId, startedAt, finishedAt, exercises }
+}
+
+function optionalTarget(set) {
+  if (!set || typeof set !== 'object') return null
+  const reps = optionalCount(set.reps)
+  const weightKg = optionalWeight(set.weightKg)
+  if (reps === undefined || weightKg === undefined) return null
+  return { reps, weightKg }
+}
+
+function loggedSet(set) {
+  const planned = optionalTarget(set)
+  if (!planned || typeof set.done !== 'boolean') return null
+  return { ...planned, done: set.done }
+}
+
+function optionalCount(value) {
+  if (value == null) return null
+  if (!Number.isInteger(value) || value <= 0) return undefined
+  return value
+}
+
+function optionalWeight(value) {
+  if (value == null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
+  return value
 }
 
 export function dayKey(date) {
