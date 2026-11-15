@@ -44,6 +44,23 @@ export async function putWorkout(workout) {
   })
 }
 
+export async function replaceWorkouts(workouts) {
+  const database = await openDatabase()
+  const stored = workouts.map(workoutToStored)
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE, 'readwrite')
+    const store = transaction.objectStore(STORE)
+    const clearRequest = store.clear()
+    clearRequest.onerror = () => reject(clearRequest.error)
+    clearRequest.onsuccess = () => {
+      for (const row of stored) store.put(row)
+    }
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
 export async function removeWorkout(id) {
   const database = await openDatabase()
   await new Promise((resolve, reject) => {

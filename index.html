@@ -22,7 +22,10 @@
         <h1 id="screen-title">Today</h1>
         <p id="screen-date" class="date"></p>
       </div>
-      <button type="button" class="add" id="add-button">Add</button>
+      <div class="actions">
+        <button type="button" class="quiet" id="backup-button">Backup</button>
+        <button type="button" class="add" id="add-button">Add</button>
+      </div>
     </header>
     <p id="banner" class="banner" role="status" hidden></p>
     <main id="main">
@@ -72,6 +75,30 @@
           <div class="confirm-actions">
             <button type="button" id="confirm-cancel">Cancel</button>
             <button type="button" id="confirm-delete" class="danger-button">Delete workout</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="backup" class="editor">
+    <form id="backup-form">
+      <div class="editor-bar">
+        <button type="button" id="backup-close">Close</button>
+        <h2>Backup</h2>
+        <span></span>
+      </div>
+      <div class="fields">
+        <p class="help">A backup is a file. On an iPhone, exporting opens the share sheet, so you can save it to Files or Google Drive.</p>
+        <p class="help">Importing replaces the workouts on this phone. Workouts that are not in the file are removed.</p>
+        <button type="button" class="wide" id="export-backup">Export backup</button>
+        <button type="button" class="wide secondary" id="import-backup">Import backup</button>
+        <input id="backup-file" type="file" accept="application/json,.json" hidden>
+        <p id="backup-message" class="form-error" role="alert" hidden></p>
+        <div id="import-confirm" class="import-confirm" hidden>
+          <p id="import-summary"></p>
+          <div class="confirm-actions">
+            <button type="button" id="import-cancel">Cancel</button>
+            <button type="button" class="wide" id="import-replace">Replace workouts</button>
           </div>
         </div>
       </div>

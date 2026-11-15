@@ -12,6 +12,9 @@ import {
   messageFor,
   parseDateTimeLocal,
   validate,
+  backupFilename,
+  createBackup,
+  parseBackup,
   workoutFromStored,
   workoutSummary,
   workoutToStored,
@@ -255,6 +258,67 @@ test('date time local values round trip', () => {
   const date = at(2026, 11, 15, 7, 5)
   assert.equal(formatDateTimeLocal(date), '2026-11-15T07:05')
   assert.equal(parseDateTimeLocal('2026-11-15T07:05').getTime(), date.getTime())
+})
+
+test('backup round trip keeps every workout', () => {
+  const exportedAt = at(2026, 11, 15, 21, 5)
+  const records = [
+    workout({
+      id: 'later',
+      type: 'yoga',
+      startedAt: at(2026, 11, 16, 18),
+      durationMinutes: 40,
+      distanceKilometres: null,
+      notes: '',
+    }),
+    workout({
+      id: 'earlier',
+      type: 'cycle',
+      startedAt: at(2026, 11, 15, 7, 5),
+      durationMinutes: 45,
+      distanceKilometres: 5.2,
+      notes: 'Park loop',
+    }),
+  ]
+  const document = createBackup(records, exportedAt)
+  assert.equal(document.version, 1)
+  assert.equal(document.exportedAt, exportedAt.toISOString())
+  assert.deepEqual(document.workouts.map((item) => item.id), ['earlier', 'later'])
+  assert.equal(backupFilename(exportedAt), 'fitness-backup-2026-11-15.json')
+
+  const parsed = parseBackup(JSON.stringify(document))
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.workouts.length, 2)
+  assert.equal(parsed.workouts[0].type, 'cycle')
+  assert.equal(parsed.workouts[0].startedAt.getTime(), records[1].startedAt.getTime())
+  assert.equal(parsed.workouts[0].durationMinutes, 45)
+  assert.ok(Math.abs(parsed.workouts[0].distanceKilometres - 5.2) < 0.000001)
+  assert.equal(parsed.workouts[0].notes, 'Park loop')
+  assert.equal(parsed.workouts[1].distanceKilometres, null)
+  assert.equal(parsed.workouts[1].notes, '')
+
+  const again = createBackup(parsed.workouts, exportedAt)
+  assert.deepEqual(again, document)
+})
+
+test('backup import rejects a file that is not a backup', () => {
+  assert.equal(parseBackup('not json').error, 'backupNotJson')
+  assert.equal(parseBackup('[]').error, 'backupNotFitness')
+  assert.equal(parseBackup('{"version":1}').error, 'backupNotFitness')
+  assert.equal(parseBackup('{"version":2,"workouts":[]}').error, 'backupVersion')
+  assert.equal(messageFor('backupVersion'), 'This backup is from a different version of Fitness.')
+
+  const badWorkout = createBackup([workout({ id: 'ok' })])
+  badWorkout.workouts.push({ ...badWorkout.workouts[0], id: 'bad', durationMinutes: 0 })
+  assert.equal(parseBackup(JSON.stringify(badWorkout)).error, 'backupWorkout')
+
+  const duplicate = createBackup([workout({ id: 'same' })])
+  duplicate.workouts.push({ ...duplicate.workouts[0] })
+  assert.equal(parseBackup(JSON.stringify(duplicate)).error, 'backupDuplicate')
+
+  const empty = parseBackup(JSON.stringify(createBackup([])))
+  assert.equal(empty.ok, true)
+  assert.deepEqual(empty.workouts, [])
 })
 
 test('autumn clock change stays on one civil day', { skip: !london }, () => {

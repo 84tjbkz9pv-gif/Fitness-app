@@ -8,6 +8,8 @@ export const WORKOUT_TYPES = [
   { id: 'other', title: 'Other' },
 ]
 
+export const BACKUP_VERSION = 1
+
 const MESSAGES = {
   typeMissing: 'Choose a workout type.',
   startMissing: 'Choose a start date and time.',
@@ -15,6 +17,11 @@ const MESSAGES = {
   durationNotPositive: 'Duration must be greater than zero.',
   distanceNotANumber: 'Enter the distance in kilometres, or leave it blank.',
   distanceNotPositive: 'Distance must be greater than zero, or leave it blank.',
+  backupNotJson: 'This file is not a Fitness backup.',
+  backupNotFitness: 'This file is not a Fitness backup.',
+  backupVersion: 'This backup is from a different version of Fitness.',
+  backupWorkout: 'This backup contains a workout that could not be read.',
+  backupDuplicate: 'This backup lists the same workout twice.',
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -69,6 +76,49 @@ export function workoutToStored(workout) {
     distanceKilometres: workout.distanceKilometres,
     notes: workout.notes,
   }
+}
+
+export function createBackup(workouts, exportedAt = new Date()) {
+  return {
+    version: BACKUP_VERSION,
+    exportedAt: exportedAt.toISOString(),
+    workouts: workouts.slice().sort(compareWorkouts).map(workoutToStored),
+  }
+}
+
+export function backupFilename(date) {
+  return `fitness-backup-${dayKey(date)}.json`
+}
+
+export function parseBackup(input) {
+  let document = input
+  if (typeof input === 'string') {
+    try {
+      document = JSON.parse(input)
+    } catch {
+      return { ok: false, error: 'backupNotJson' }
+    }
+  }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) {
+    return { ok: false, error: 'backupNotFitness' }
+  }
+  if (document.version !== BACKUP_VERSION) {
+    return { ok: false, error: 'backupVersion' }
+  }
+  if (!Array.isArray(document.workouts)) {
+    return { ok: false, error: 'backupNotFitness' }
+  }
+
+  const workouts = []
+  const seen = new Set()
+  for (const row of document.workouts) {
+    const workout = workoutFromStored(row)
+    if (!workout) return { ok: false, error: 'backupWorkout' }
+    if (seen.has(workout.id)) return { ok: false, error: 'backupDuplicate' }
+    seen.add(workout.id)
+    workouts.push(workout)
+  }
+  return { ok: true, workouts }
 }
 
 export function workoutFromStored(stored) {

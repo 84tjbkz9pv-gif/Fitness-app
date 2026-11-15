@@ -97,6 +97,18 @@ h1 {
   cursor: pointer;
 }
 
+.actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+.quiet {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 650;
+  cursor: pointer;
+}
+
 .add {
   flex: 0 0 auto;
   padding: 0 16px;
@@ -104,6 +116,32 @@ h1 {
   background: var(--accent);
   color: #ffffff;
   font-weight: 650;
+}
+
+.help { color: var(--muted); }
+
+.wide, .wide.secondary {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wide.secondary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.import-confirm {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -116,6 +154,11 @@ h1 {
   border-radius: 12px;
   background: #fde8e8;
   color: #6f1d1d;
+}
+
+.banner.success {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -174,7 +217,7 @@ main {
 }
 
 @media (prefers-color-scheme: dark) {
-  .empty button, .danger-button, .confirm-actions .primary { color: #102117; }
+  .empty button, .danger-button, .confirm-actions .primary, .wide:not(.secondary) { color: #102117; }
 }
 
 .day { margin: 0 0 18px; padding: 0; list-style: none; }

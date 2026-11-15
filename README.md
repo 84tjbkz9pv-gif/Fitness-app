@@ -32,11 +32,17 @@ When GitHub Pages is allowed for this repository, the address is:
 
 ### Where the workouts live
 
-Workouts are stored only in this browser on this phone, using the browser's own database (IndexedDB). They are not sent anywhere.
+Workouts are stored only in this browser on this phone, using the browser's own database (IndexedDB). They are not sent anywhere unless you export a backup.
 
 Deleting that data deletes the workouts. On the iPhone that is Settings → Apps → Safari → Advanced → Website Data, then remove this site. Removing the home-screen icon does not by itself delete the data, but clearing the site data does. There is no account to restore them from.
 
-A later version will add a way to export a backup.
+### Backup
+
+Tap **Backup**, then **Export backup**. On the iPhone the share sheet opens. Save the file to Files, or to Google Drive if Drive is in the share sheet.
+
+**Import backup** reads that file and replaces the workouts on this phone. Anything on the phone that is not in the file is removed.
+
+The file is one JSON document, version 1, with the date it was exported and the list of workouts. A later version will be able to put that same file in a Google Drive folder for you. This version does not sign in to Google.
 
 ## GitHub Pages
 

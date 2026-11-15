@@ -8,11 +8,14 @@ import {
   messageFor,
   parseDateTimeLocal,
   typeTitle,
+  parseBackup,
   validate,
   workoutSummary,
   workoutsOnDay,
+  backupFilename,
+  createBackup,
 } from './logic.js'
-import { keepDataOnThisPhone, loadWorkouts, putWorkout, removeWorkout } from './storage.js'
+import { keepDataOnThisPhone, loadWorkouts, putWorkout, removeWorkout, replaceWorkouts } from './storage.js'
 
 const ICONS = {
   run: '🏃',
@@ -44,10 +47,16 @@ const deleteButton = document.querySelector('#delete')
 const confirmPanel = document.querySelector('#confirm')
 const confirmCancel = document.querySelector('#confirm-cancel')
 const confirmDelete = document.querySelector('#confirm-delete')
+const backupDialog = document.querySelector('#backup')
+const backupMessage = document.querySelector('#backup-message')
+const importConfirm = document.querySelector('#import-confirm')
+const importSummary = document.querySelector('#import-summary')
+const backupFile = document.querySelector('#backup-file')
 
 let workouts = []
 let screen = 'today'
 let editingId = null
+let pendingImport = null
 
 for (const type of WORKOUT_TYPES) {
   const option = document.createElement('option')
@@ -75,6 +84,15 @@ confirmDelete.addEventListener('click', onDelete)
 editor.addEventListener('close', () => {
   confirmPanel.hidden = true
 })
+document.querySelector('#backup-button').addEventListener('click', openBackup)
+document.querySelector('#backup-close').addEventListener('click', () => backupDialog.close())
+document.querySelector('#backup-form').addEventListener('submit', (event) => event.preventDefault())
+document.querySelector('#export-backup').addEventListener('click', exportBackup)
+document.querySelector('#import-backup').addEventListener('click', () => backupFile.click())
+backupFile.addEventListener('change', onBackupFile)
+document.querySelector('#import-cancel').addEventListener('click', clearPendingImport)
+document.querySelector('#import-replace').addEventListener('click', importBackup)
+backupDialog.addEventListener('close', clearPendingImport)
 
 start().catch((error) => {
   console.error(error)
@@ -268,9 +286,101 @@ async function onDelete() {
   render()
 }
 
-function showBanner(message) {
+function openBackup() {
+  clearPendingImport()
+  backupMessage.hidden = true
+  backupDialog.showModal()
+}
+
+async function exportBackup() {
+  backupMessage.hidden = true
+  const exportedAt = new Date()
+  const file = new File(
+    [`${JSON.stringify(createBackup(workouts, exportedAt), null, 2)}\n`],
+    backupFilename(exportedAt),
+    { type: 'application/json' },
+  )
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Fitness backup' })
+      return
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') return
+  }
+  downloadFile(file)
+}
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = file.name
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function onBackupFile() {
+  const file = backupFile.files?.[0]
+  if (!file) return
+  let text
+  try {
+    text = await file.text()
+  } catch (error) {
+    backupFile.value = ''
+    console.error(error)
+    showBackupMessage('Could not read that file.')
+    return
+  }
+  backupFile.value = ''
+  clearPendingImport()
+  const parsed = parseBackup(text)
+  if (!parsed.ok) {
+    showBackupMessage(messageFor(parsed.error))
+    return
+  }
+  pendingImport = parsed.workouts
+  importSummary.textContent = importSummaryText(parsed.workouts.length)
+  importConfirm.hidden = false
+}
+
+async function importBackup() {
+  if (!pendingImport) return
+  try {
+    await replaceWorkouts(pendingImport)
+  } catch (error) {
+    console.error(error)
+    showBackupMessage('Could not import this backup on this phone.')
+    return
+  }
+  workouts = pendingImport
+  backupDialog.close()
+  render()
+  showBanner('Backup imported.', 'success')
+}
+
+function importSummaryText(count) {
+  if (count === 0) return 'This backup has no workouts. Importing removes the workouts on this phone.'
+  if (count === 1) return 'This backup has 1 workout. Importing replaces the workouts on this phone.'
+  return `This backup has ${count} workouts. Importing replaces the workouts on this phone.`
+}
+
+function showBackupMessage(message) {
+  backupMessage.hidden = false
+  backupMessage.textContent = message
+}
+
+function clearPendingImport() {
+  pendingImport = null
+  importConfirm.hidden = true
+}
+
+function showBanner(message, kind = 'error') {
   banner.hidden = false
   banner.textContent = message
+  banner.classList.toggle('success', kind === 'success')
 }
 
 function newId() {
