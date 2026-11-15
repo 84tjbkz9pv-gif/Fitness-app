@@ -17,6 +17,8 @@ import { createTrainer } from './train.js'
 import { calendarView, todayPlanner } from './calendar.js'
 import { copyMeal, emptyCopyMessage, foodProfileFromStored, weightForCalculator, yesterdayKey } from './food.js'
 import { foodScreen, foodTodayCard, openFoodDialog, openTargetSheet } from './food-view.js'
+import { openMealDialog } from './meal-view.js'
+import { ingredientFromLine, onePortion } from './meals.js'
 import { fetchOffProduct } from './off.js'
 import { openPortion, openScanner } from './scanner.js'
 import { openRunDialog } from './run-view.js'
@@ -56,6 +58,7 @@ import {
   loadKcalTarget,
   loadPlans,
   loadProducts,
+  loadSavedMeals,
   loadTrainingPlan,
   loadWeights,
   loadRuns,
@@ -66,6 +69,9 @@ import {
   putFood,
   putPlan,
   putProduct,
+  putSavedMeal,
+  deleteSavedMeal,
+  replaceSavedMeals,
   putRoutine,
   putSession,
   putWorkout,
@@ -154,6 +160,7 @@ let sessions = []
 let customExercises = []
 let plans = []
 let foods = []
+let savedMeals = []
 let products = []
 let kcalTarget = null
 let foodProfile = null
@@ -329,6 +336,7 @@ async function onReset(event) {
   customExercises = []
   plans = []
   foods = []
+  savedMeals = []
   products = []
   weights = []
   kcalTarget = null
@@ -402,7 +410,7 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan, weights, runs] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan, weights, runs, savedMeals] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
@@ -415,6 +423,7 @@ async function unlockApp() {
       loadTrainingPlan(),
       loadWeights(),
       loadRuns(),
+      loadSavedMeals(),
     ])
     foodProfile = foodProfileFromStored(foodProfile)
     if (foodProfile === undefined) foodProfile = null
@@ -428,6 +437,7 @@ async function unlockApp() {
     customExercises = []
     plans = []
     foods = []
+    savedMeals = []
     products = []
     weights = []
     kcalTarget = null
@@ -448,6 +458,7 @@ function lockApp() {
   customExercises = []
   plans = []
   foods = []
+  savedMeals = []
   products = []
   weights = []
   kcalTarget = null
@@ -591,6 +602,7 @@ function foodState(selection) {
   return {
     ...selection,
     foods,
+    savedMeals,
     kcalTarget: kcalOn(selection.selectedKey),
     profile: foodProfile,
     weightKg: weightForCalculator(foodProfile, weights),
@@ -610,10 +622,20 @@ function foodActions() {
       render()
     },
     addFood(meal) {
-      openFoodDialog({ meal, entry: null, foods, products, date: selectedKey }, foodSaveActions())
+      openFoodDialog({ meal, entry: null, foods, products, savedMeals, date: selectedKey }, foodSaveActions())
     },
     editFood(entry) {
-      openFoodDialog({ meal: entry.meal, entry, foods, products, date: entry.date }, foodSaveActions())
+      openFoodDialog({ meal: entry.meal, entry, foods, products, savedMeals, date: entry.date }, foodSaveActions())
+    },
+    createMeal() {
+      openMealDialog(null, { foods }, mealActions())
+    },
+    editMeal(meal) {
+      openMealDialog(meal, { foods }, mealActions())
+    },
+    logMeal(meal, slot) {
+      const portion = onePortion(meal)
+      saveFood({ ...portion, id: null, date: selectedKey, meal: slot })
     },
     scan(meal) {
       startScan(meal)
@@ -665,6 +687,7 @@ async function saveFood(value) {
     carbsG: value.carbsG,
     fatG: value.fatG,
     barcode: value.barcode,
+    ingredients: value.ingredients ?? null,
     createdAt: foods.find((item) => item.id === value.id)?.createdAt ?? new Date().toISOString(),
   }
   try {
@@ -732,8 +755,63 @@ function foodSaveActions() {
     copyYesterday,
     addRecent,
     scan: startScan,
+    logMeal(meal, slot) {
+      saveFood({ ...onePortion(meal), id: null, date: selectedKey, meal: slot })
+    },
     scanProduct(product, meal) {
       openPortion({ product, meal }, { saveScanned: saveScannedFood })
+    },
+  }
+}
+
+async function storeMeal(value) {
+  const meal = {
+    id: value.id ?? newId(),
+    name: value.name,
+    portions: value.portions,
+    ingredients: value.ingredients,
+  }
+  try {
+    await putSavedMeal(meal)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not save this meal on this phone.')
+    return
+  }
+  const index = savedMeals.findIndex((item) => item.id === meal.id)
+  if (index === -1) savedMeals.push(meal)
+  else savedMeals[index] = meal
+  render()
+}
+
+async function removeMeal(id) {
+  try {
+    await deleteSavedMeal(id)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not delete this meal on this phone.')
+    return
+  }
+  savedMeals = savedMeals.filter((item) => item.id !== id)
+  render()
+}
+
+function mealActions() {
+  return {
+    saveMeal: storeMeal,
+    deleteMeal: removeMeal,
+    scanIngredient(onIngredient) {
+      openScanner({ meal: 'breakfast' }, {
+        lookup: lookupBarcode,
+        notFound() {
+          showBanner('Not found')
+        },
+        label: 'Add ingredient',
+        saveScanned(value) {
+          const item = ingredientFromLine(value)
+          if (item) onIngredient(item)
+        },
+      })
     },
   }
 }
@@ -748,6 +826,7 @@ function startScan(meal) {
         entry: null,
         foods,
         products,
+        savedMeals,
         date: selectedKey,
         barcode: code,
       }, foodSaveActions())
@@ -1315,6 +1394,7 @@ async function exportBackup() {
       trainingPlan,
       weights,
       runs,
+      savedMeals,
     }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
@@ -1379,6 +1459,7 @@ async function importBackup() {
     await saveTrainingPlan(pendingImport.trainingPlan ?? null)
     await replaceWeights(pendingImport.weights ?? [])
     await replaceRuns(pendingImport.runs ?? [])
+    await replaceSavedMeals(pendingImport.savedMeals ?? [])
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
@@ -1395,6 +1476,7 @@ async function importBackup() {
   trainingPlan = pendingImport.trainingPlan ?? null
   weights = pendingImport.weights ?? []
   runs = pendingImport.runs ?? []
+  savedMeals = pendingImport.savedMeals ?? []
   trainer.reset()
   backupDialog.close()
   render()
@@ -1402,7 +1484,7 @@ async function importBackup() {
 }
 
 function importSummaryText(count) {
-  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, food log, weight log, and runs on this phone.'
+  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, food log, weight log, runs, and saved meals on this phone.'
   if (count === 0) return `This backup has no workouts. ${tail}`
   if (count === 1) return `This backup has 1 workout. ${tail}`
   return `This backup has ${count} workouts. ${tail}`

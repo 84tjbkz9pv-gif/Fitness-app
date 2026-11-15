@@ -1,3 +1,4 @@
+import { referenceListFromStored } from './meals.js'
 import { addDays, isDateKey } from './plan.js'
 
 export const MEALS = [
@@ -98,6 +99,7 @@ export function copyMeal(entries, fromDate, toDate, meal, newId, createdAt) {
       carbsG: entry.carbsG ?? null,
       fatG: entry.fatG ?? null,
       barcode: entry.barcode ?? null,
+      ingredients: entry.ingredients ?? null,
       createdAt,
     }))
 }
@@ -227,6 +229,8 @@ export function foodFromStored(stored) {
   if (proteinG === undefined || carbsG === undefined || fatG === undefined) return null
   const barcode = stored.barcode == null ? null : stored.barcode
   if (barcode != null && !/^\d{8,14}$/.test(barcode)) return null
+  const ingredients = referenceListFromStored(stored.ingredients)
+  if (ingredients === undefined) return null
   const createdAt = typeof stored.createdAt === 'string' ? stored.createdAt : ''
   if (Number.isNaN(new Date(createdAt).getTime())) return null
   return {
@@ -240,12 +244,13 @@ export function foodFromStored(stored) {
     carbsG,
     fatG,
     barcode,
+    ingredients,
     createdAt,
   }
 }
 
 export function foodToStored(entry) {
-  return {
+  const stored = {
     id: entry.id,
     date: entry.date,
     meal: entry.meal,
@@ -258,6 +263,8 @@ export function foodToStored(entry) {
     barcode: entry.barcode ?? null,
     createdAt: entry.createdAt,
   }
+  if (entry.ingredients?.length) stored.ingredients = entry.ingredients
+  return stored
 }
 
 export function foodProfileFromStored(stored) {

@@ -234,7 +234,7 @@ export function openPortion({ product, meal, offline = false }, actions) {
     const add = document.createElement('button')
     add.type = 'button'
     add.className = 'pill'
-    add.textContent = `Add to ${mealTitle(meal).toLocaleLowerCase('en-GB')}`
+    add.textContent = actions.label ?? `Add to ${mealTitle(meal).toLocaleLowerCase('en-GB')}`
     add.addEventListener('click', () => {
       const nutrients = nutrientsFor(product, { mode: current, amount: amount.value })
       if (!nutrients.ok) {
@@ -252,6 +252,8 @@ export function openPortion({ product, meal, offline = false }, actions) {
         carbsG: nutrients.carbsG,
         fatG: nutrients.fatG,
         barcode: product.barcode,
+        mode: current,
+        quantity: Number(amount.value),
       })
     })
     const cancel = document.createElement('button')
