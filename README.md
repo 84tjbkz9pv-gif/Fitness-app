@@ -15,7 +15,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 
 Lists use British dates, for example Sunday, 15 November 2026, and 24-hour times. The start control in the form follows the language and clock already set on the iPhone.
 
-After the first successful load, the app works with no signal.
+After the first successful load, the app works with no signal. When a new version is published, the next open reloads once so the page and its scripts stay together. Workouts already stored on the phone are kept.
 
 ## PIN
 
