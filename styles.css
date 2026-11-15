@@ -783,6 +783,33 @@ html.plan-dragging { touch-action: none; }
 
 .meal { display: grid; gap: 8px; }
 
+.meal-actions { display: flex; gap: 16px; align-items: center; }
+
+.scanner-frame { position: relative; }
+
+.scanner-video {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #000;
+  border-radius: 16px;
+}
+
+.scanner-box {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 28%;
+  bottom: 28%;
+  border: 3px solid var(--accent);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.portion-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.portion-mode .on { background: var(--accent); color: var(--on-accent); }
+
 .meal-head, .food-item {
   display: flex;
   align-items: center;

@@ -1,6 +1,6 @@
 # Fitness
 
-A personal workout log for Emily. It is a website she can add to the iPhone home screen. This version records workouts. Steps, food, weight, and sleep are not in it yet.
+A personal workout log for Emily. It is a website she can add to the iPhone home screen. This version records workouts and food. Steps, weight, and sleep are not in it yet.
 
 Workouts stay in the browser on that phone. There is no account, server, analytics, or advertising. Units are metric (minutes and kilometres).
 
@@ -8,7 +8,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 
 - See today's date and the workouts that started today. A week strip shows each day. Plan a routine on a day, then start it from Today.
 - Calendar lists each week. A planned routine can be moved to another day or removed. Press and hold a planned card, then drag it onto another day. A logged workout stays on the day it was done.
-- On Food, log breakfast, lunch, tea and snacks in kcal. A daily target is optional. The calculator uses the Mifflin-St Jeor formula and is an estimate, not advice.
+- On Food, log breakfast, lunch, tea and snacks in kcal. Scan a barcode or type it. A daily target is optional. The calculator uses the Mifflin-St Jeor formula and is an estimate, not advice.
 - Add a workout: type (run, walk, cycle, strength, swim, yoga, or other), start date and time, duration in minutes, optional distance in kilometres, and optional notes.
 - Edit or delete a workout.
 - Browse every logged workout, grouped by day. Today is included, under the heading Today.
@@ -77,6 +77,12 @@ node --test
 ```
 TZ=Europe/London node --test
 ```
+
+## Barcode reader
+
+Scanning uses the phone camera when it is allowed. You can also type the barcode. Product details come from Open Food Facts. A product that has been looked up is kept on the phone, so scanning it again still works with no signal.
+
+iPhone Safari does not include the built-in barcode detector. Fitness includes a copy of [ZXing](https://github.com/zxing-js/library) for that, under the Apache License 2.0 (`js/vendor/ZXING-LICENSE.txt`). The copy is loaded only when the scanner opens, and the offline cache keeps it. In a home-screen app, the camera is available on iOS 16.4 or later. The site has to be opened over HTTPS.
 
 ## Look at it on a computer
 
