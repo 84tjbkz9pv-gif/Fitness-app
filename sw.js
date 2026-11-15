@@ -1,4 +1,4 @@
-const CACHE = 'fitness-v6'
+const CACHE = 'fitness-v7'
 
 const FILES = [
   './',
@@ -11,6 +11,8 @@ const FILES = [
   './js/gym.js',
   './js/train.js',
   './js/routine-link.js',
+  './js/plan.js',
+  './js/calendar.js',
   './js/storage.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

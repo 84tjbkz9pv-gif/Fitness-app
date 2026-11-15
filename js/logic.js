@@ -1,3 +1,5 @@
+import { planFromStored, planToStored } from './plan.js'
+
 export const WORKOUT_TYPES = [
   { id: 'run', title: 'Run' },
   { id: 'walk', title: 'Walk' },
@@ -8,7 +10,7 @@ export const WORKOUT_TYPES = [
   { id: 'other', title: 'Other' },
 ]
 
-export const BACKUP_VERSION = 2
+export const BACKUP_VERSION = 3
 
 const MESSAGES = {
   typeMissing: 'Choose a workout type.',
@@ -25,6 +27,7 @@ const MESSAGES = {
   backupExercise: 'This backup contains an exercise that could not be read.',
   backupRoutine: 'This backup contains a routine that could not be read.',
   backupSession: 'This backup contains a gym session that could not be read.',
+  backupPlan: 'This backup contains a plan that could not be read.',
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -89,6 +92,7 @@ export function createBackup(workouts, exportedAt = new Date(), extra = {}) {
     exercises: (extra.exercises ?? []).slice().sort((left, right) => left.id.localeCompare(right.id)).map(exerciseToStored),
     routines: (extra.routines ?? []).slice().sort((left, right) => left.id.localeCompare(right.id)).map(routineToStored),
     sessions: (extra.sessions ?? []).slice().sort((left, right) => left.startedAt - right.startedAt).map(sessionToStored),
+    plans: (extra.plans ?? []).slice().sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id)).map(planToStored),
   }
 }
 
@@ -108,7 +112,7 @@ export function parseBackup(input) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) {
     return { ok: false, error: 'backupNotFitness' }
   }
-  if (document.version !== 1 && document.version !== 2) {
+  if (document.version !== 1 && document.version !== 2 && document.version !== 3) {
     return { ok: false, error: 'backupVersion' }
   }
   if (!Array.isArray(document.workouts)) {
@@ -118,7 +122,7 @@ export function parseBackup(input) {
   const workouts = readRecords(document.workouts, workoutFromStored, 'backupWorkout')
   if (!workouts.ok) return workouts
   if (document.version === 1) {
-    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [] }
+    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [], plans: [] }
   }
 
   const exercises = readRecords(document.exercises ?? [], exerciseFromStored, 'backupExercise')
@@ -127,12 +131,17 @@ export function parseBackup(input) {
   if (!routines.ok) return routines
   const sessions = readRecords(document.sessions ?? [], sessionFromStored, 'backupSession')
   if (!sessions.ok) return sessions
+  const plans = document.version === 3
+    ? readRecords(document.plans ?? [], planFromStored, 'backupPlan')
+    : { ok: true, items: [] }
+  if (!plans.ok) return plans
   return {
     ok: true,
     workouts: workouts.items,
     exercises: exercises.items,
     routines: routines.items,
     sessions: sessions.items,
+    plans: plans.items,
   }
 }
 

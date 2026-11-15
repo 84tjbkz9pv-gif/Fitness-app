@@ -931,7 +931,11 @@ export function createTrainer(api) {
     return wrap
   }
 
-  return { render, reset, showSession }
+  function startRoutine(routine) {
+    startFromRoutine(routine)
+  }
+
+  return { render, reset, showSession, startRoutine }
 }
 
 function bar(closeLabel, title, saveLabel, onClose) {
