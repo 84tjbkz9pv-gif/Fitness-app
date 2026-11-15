@@ -171,6 +171,13 @@ async function start() {
   else showGate('setup')
   keepDataOnThisPhone()
   if ('serviceWorker' in navigator) {
+    let refreshing = false
+    const hadController = Boolean(navigator.serviceWorker.controller)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || refreshing) return
+      refreshing = true
+      window.location.reload()
+    })
     navigator.serviceWorker.register('./sw.js').catch(() => {
       // The page still works. The copy on the phone is updated the next time it can reach the site.
     })
