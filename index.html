@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f7f4">
+  <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fitness">
+  <title>Fitness</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="gate" class="app">
+    <p class="status" id="gate-status">Loading…</p>
+    <form id="setup-form" class="gate-card" hidden>
+      <h1>Choose a PIN</h1>
+      <p class="help">Enter a PIN of 4 to 6 digits. Fitness asks for it each time you open it.</p>
+      <label>PIN
+        <input id="setup-pin" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off" enterkeyhint="next">
+      </label>
+      <label>PIN again
+        <input id="setup-pin-again" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off" enterkeyhint="done">
+      </label>
+      <p id="setup-error" class="form-error" role="alert" hidden></p>
+      <button type="submit" class="wide">Set PIN</button>
+    </form>
+    <form id="unlock-form" class="gate-card" hidden>
+      <h1>Fitness</h1>
+      <p class="help">Enter your PIN to open your workouts.</p>
+      <label>PIN
+        <input id="unlock-pin" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off" enterkeyhint="done">
+      </label>
+      <p id="unlock-error" class="form-error" role="alert" hidden></p>
+      <button type="submit" class="wide" id="unlock-button">Unlock</button>
+      <button type="button" class="linkish" id="forgot-pin">Forgotten PIN?</button>
+    </form>
+    <form id="reset-form" class="gate-card" hidden>
+      <h1>Reset app</h1>
+      <p>This removes the PIN and every workout stored on this phone. You cannot export a backup while Fitness is locked. The workouts are gone unless you already saved a backup.</p>
+      <button type="button" class="wide secondary" id="reset-cancel">Cancel</button>
+      <button type="submit" class="danger-button" id="reset-confirm">Reset app</button>
+    </form>
+  </div>
+
+  <div class="app" id="shell" hidden>
+    <header class="top">
+      <div class="title-row">
+        <h1 id="screen-title">Today</h1>
+        <div class="actions">
+          <button type="button" class="quiet" id="settings-button">Settings</button>
+          <button type="button" class="quiet" id="backup-button">Backup</button>
+          <button type="button" class="add" id="add-button">Add</button>
+        </div>
+      </div>
+      <p id="screen-date" class="date"></p>
+    </header>
+    <p id="banner" class="banner" role="status" hidden></p>
+    <main id="main">
+      <p class="status">Loading…</p>
+    </main>
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" id="tab-today" data-screen="today" aria-current="page">Today</button>
+      <button type="button" id="tab-history" data-screen="history">History</button>
+    </nav>
+  </div>
+
+  <dialog id="editor" class="editor">
+    <form id="workout-form">
+      <div class="editor-bar">
+        <button type="button" id="cancel">Cancel</button>
+        <h2 id="editor-title">Add workout</h2>
+        <button type="submit" id="save">Save</button>
+      </div>
+      <div class="fields">
+        <label>
+          Type
+          <select id="type" name="type"></select>
+        </label>
+        <label>
+          Start
+          <input id="start" name="start" type="datetime-local" required>
+        </label>
+        <label>
+          Duration (minutes)
+          <input id="duration" name="duration" inputmode="numeric" autocomplete="off" enterkeyhint="done">
+        </label>
+        <label>
+          Distance (km)
+          <input id="distance" name="distance" inputmode="decimal" autocomplete="off" placeholder="Optional" enterkeyhint="done">
+        </label>
+        <label>
+          Notes
+          <textarea id="notes" name="notes" rows="4" placeholder="Optional"></textarea>
+        </label>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+        <button type="button" id="delete" class="danger-text" hidden>Delete workout</button>
+      </div>
+      <div id="confirm" class="confirm" hidden>
+        <div class="confirm-card">
+          <h2>Delete this workout?</h2>
+          <p>This removes it from this phone.</p>
+          <div class="confirm-actions">
+            <button type="button" id="confirm-cancel">Cancel</button>
+            <button type="button" id="confirm-delete" class="danger-button">Delete workout</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="backup" class="editor">
+    <form id="backup-form">
+      <div class="editor-bar">
+        <button type="button" id="backup-close">Close</button>
+        <h2>Backup</h2>
+        <span></span>
+      </div>
+      <div class="fields">
+        <p class="help">A backup is a file. On an iPhone, exporting opens the share sheet, so you can save it to Files or Google Drive.</p>
+        <p class="help">Importing replaces the workouts on this phone. Workouts that are not in the file are removed.</p>
+        <button type="button" class="wide" id="export-backup">Export backup</button>
+        <button type="button" class="wide secondary" id="import-backup">Import backup</button>
+        <input id="backup-file" type="file" accept="application/json,.json" hidden>
+        <p id="backup-message" class="form-error" role="alert" hidden></p>
+        <div id="import-confirm" class="import-confirm" hidden>
+          <p id="import-summary"></p>
+          <div class="confirm-actions">
+            <button type="button" id="import-cancel">Cancel</button>
+            <button type="button" class="wide" id="import-replace">Replace workouts</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="settings" class="editor">
+    <form id="pin-change-form">
+      <div class="editor-bar">
+        <button type="button" id="settings-close">Close</button>
+        <h2>Settings</h2>
+        <button type="submit">Save</button>
+      </div>
+      <div class="fields">
+        <h2 class="section-label">Change PIN</h2>
+        <p class="help">Enter the current PIN, then a new PIN of 4 to 6 digits.</p>
+        <label>Current PIN
+          <input id="current-pin" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+        </label>
+        <label>New PIN
+          <input id="new-pin" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+        </label>
+        <label>New PIN again
+          <input id="new-pin-again" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+        </label>
+        <p id="settings-error" class="form-error" role="alert" hidden></p>
+      </div>
+    </form>
+  </dialog>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
