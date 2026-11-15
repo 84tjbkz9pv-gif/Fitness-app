@@ -4,8 +4,12 @@ import {
   calendarMondays,
   dayContent,
   dayNumber,
+  dropAction,
+  HOLD_MS,
+  HOLD_SLOP_PX,
   isDateKey,
   londonKey,
+  rowAtPoint,
   weekDays,
   weekdayLabel,
   weekLabel,
@@ -119,6 +123,7 @@ function selectedDay(state, actions) {
 function calendarDay(date, state, actions) {
   const row = document.createElement('div')
   row.className = 'cal-day'
+  row.dataset.date = date
   const label = document.createElement('div')
   label.className = 'cal-label'
   const name = document.createElement('span')
@@ -173,8 +178,141 @@ function planCard(item, state, actions, withStart) {
     start.textContent = 'Start'
     start.addEventListener('click', () => actions.startPlan(item.plan))
     card.append(start)
+  } else {
+    enableDrag(card, item.plan, state, actions)
   }
   return card
+}
+
+function enableDrag(card, plan, state, actions) {
+  card.classList.add('can-drag')
+  let pointerId = null
+  let startX = 0
+  let startY = 0
+  let lastX = 0
+  let lastY = 0
+  let holdTimer = 0
+  let dragging = false
+  let suppressClick = false
+  let offsetX = 0
+  let offsetY = 0
+  let ghost = null
+  let frame = 0
+
+  card.addEventListener('contextmenu', (event) => event.preventDefault())
+  card.addEventListener('click', (event) => {
+    if (!suppressClick) return
+    suppressClick = false
+    event.preventDefault()
+    event.stopPropagation()
+  }, true)
+  card.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || pointerId != null) return
+    pointerId = event.pointerId
+    startX = lastX = event.clientX
+    startY = lastY = event.clientY
+    holdTimer = window.setTimeout(begin, HOLD_MS)
+  })
+  card.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== pointerId) return
+    lastX = event.clientX
+    lastY = event.clientY
+    if (!dragging) {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > HOLD_SLOP_PX) cancelHold()
+      return
+    }
+    event.preventDefault()
+    placeGhost(event.clientX, event.clientY)
+    markRow(event.clientX, event.clientY)
+  }, { passive: false })
+  card.addEventListener('touchmove', (event) => {
+    if (dragging) event.preventDefault()
+  }, { passive: false })
+  card.addEventListener('pointerup', (event) => finish(event))
+  card.addEventListener('pointercancel', (event) => finish(event))
+
+  function begin() {
+    if (pointerId == null) return
+    dragging = true
+    suppressClick = true
+    const rect = card.getBoundingClientRect()
+    offsetX = startX - rect.left
+    offsetY = startY - rect.top
+    card.classList.add('drag-source')
+    document.documentElement.classList.add('plan-dragging')
+    ghost = card.cloneNode(true)
+    ghost.classList.remove('drag-source', 'can-drag')
+    ghost.classList.add('drag-ghost')
+    ghost.style.width = `${rect.width}px`
+    document.body.append(ghost)
+    placeGhost(startX, startY)
+    markRow(startX, startY)
+    try { card.setPointerCapture(pointerId) } catch { /* The pointer can already be gone. */ }
+    try { navigator.vibrate?.(10) } catch { /* A browser may refuse vibration. */ }
+    frame = requestAnimationFrame(tick)
+  }
+
+  function tick() {
+    if (!dragging) return
+    const scroller = document.querySelector('#main')
+    if (scroller) {
+      const rect = scroller.getBoundingClientRect()
+      if (lastY < rect.top + 72) scroller.scrollTop -= 14
+      else if (lastY > rect.bottom - 72) scroller.scrollTop += 14
+    }
+    markRow(lastX, lastY)
+    frame = requestAnimationFrame(tick)
+  }
+
+  function finish(event) {
+    if (event.pointerId !== pointerId) return
+    const wasDragging = dragging
+    const point = event.clientX === 0 && event.clientY === 0
+      ? { x: lastX, y: lastY }
+      : { x: event.clientX, y: event.clientY }
+    const to = wasDragging ? rowAtPoint(dayRects(), point.x, point.y) : null
+    const decision = wasDragging
+      ? dropAction(state.plans, plan.id, plan.date, to)
+      : { action: 'cancel' }
+    stopDrag()
+    if (decision.action === 'move' || decision.action === 'blocked') actions.movePlan(plan.id, to)
+  }
+
+  function cancelHold() {
+    window.clearTimeout(holdTimer)
+    if (pointerId != null && !dragging) pointerId = null
+  }
+
+  function stopDrag() {
+    window.clearTimeout(holdTimer)
+    cancelAnimationFrame(frame)
+    dragging = false
+    pointerId = null
+    ghost?.remove()
+    ghost = null
+    card.classList.remove('drag-source')
+    document.documentElement.classList.remove('plan-dragging')
+    for (const row of document.querySelectorAll('.cal-day.drop-over')) row.classList.remove('drop-over')
+  }
+
+  function placeGhost(x, y) {
+    if (!ghost) return
+    ghost.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px) scale(1.04)`
+  }
+}
+
+function dayRects() {
+  return [...document.querySelectorAll('.cal-day')].map((row) => {
+    const rect = row.getBoundingClientRect()
+    return { date: row.dataset.date, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+  })
+}
+
+function markRow(x, y) {
+  const date = rowAtPoint(dayRects(), x, y)
+  for (const row of document.querySelectorAll('.cal-day')) {
+    row.classList.toggle('drop-over', row.dataset.date === date)
+  }
 }
 
 function doneCard(name, summary) {

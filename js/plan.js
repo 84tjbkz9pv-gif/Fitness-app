@@ -90,6 +90,27 @@ export function planToStored(plan) {
   return { id: plan.id, date: plan.date, routineId: plan.routineId }
 }
 
+export const HOLD_MS = 400
+export const HOLD_SLOP_PX = 10
+
+export function shouldStartDrag(elapsedMs, distancePx) {
+  return elapsedMs >= HOLD_MS && distancePx <= HOLD_SLOP_PX
+}
+
+export function rowAtPoint(rows, x, y) {
+  for (const row of rows) {
+    if (x >= row.left && x <= row.right && y >= row.top && y <= row.bottom) return row.date
+  }
+  return null
+}
+
+export function dropAction(plans, planId, fromDate, toDate) {
+  if (!toDate || toDate === fromDate) return { action: 'cancel' }
+  const result = movePlan(plans, planId, toDate)
+  if (!result.ok) return { action: result.error === 'alreadyPlanned' ? 'blocked' : 'cancel' }
+  return { action: 'move', plans: result.plans }
+}
+
 export function movePlan(plans, id, dateKey) {
   if (!isDateKey(dateKey)) return { ok: false }
   const current = plans.find((plan) => plan.id === id)

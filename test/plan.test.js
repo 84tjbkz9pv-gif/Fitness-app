@@ -5,12 +5,15 @@ import {
   addDays,
   calendarMondays,
   dayContent,
+  dropAction,
   isDateKey,
   londonKey,
   londonLong,
   mondayOf,
   movePlan,
   removePlan,
+  rowAtPoint,
+  shouldStartDrag,
   weekDays,
   weekLabel,
   weekdayIndex,
@@ -105,4 +108,33 @@ test('plan entries round trip in a version 3 backup and older backups stay empty
   const mondays = calendarMondays('2026-11-15', ['2026-12-25'])
   assert.equal(mondays.includes('2026-11-09'), true)
   assert.equal(mondays.includes(mondayOf('2026-12-25')), true)
+})
+
+test('a drag starts after a short hold and a drop uses the day under the finger', () => {
+  assert.equal(shouldStartDrag(399, 0), false)
+  assert.equal(shouldStartDrag(400, 10), true)
+  assert.equal(shouldStartDrag(500, 11), false)
+
+  const rows = [
+    { date: '2026-11-15', left: 0, top: 0, right: 100, bottom: 40 },
+    { date: '2026-11-16', left: 0, top: 40, right: 100, bottom: 80 },
+  ]
+  assert.equal(rowAtPoint(rows, 10, 20), '2026-11-15')
+  assert.equal(rowAtPoint(rows, 10, 60), '2026-11-16')
+  assert.equal(rowAtPoint(rows, 10, 90), null)
+  assert.equal(rowAtPoint(rows, 120, 20), null)
+
+  const plans = [
+    { id: 'a', date: '2026-11-15', routineId: 'legs' },
+    { id: 'b', date: '2026-11-16', routineId: 'legs' },
+  ]
+  assert.deepEqual(dropAction(plans, 'a', '2026-11-15', null), { action: 'cancel' })
+  assert.deepEqual(dropAction(plans, 'a', '2026-11-15', '2026-11-15'), { action: 'cancel' })
+  assert.equal(dropAction(plans, 'a', '2026-11-15', '2026-11-16').action, 'blocked')
+  assert.equal(plans[0].date, '2026-11-15')
+  const moved = dropAction(plans, 'a', '2026-11-15', '2026-11-18')
+  assert.equal(moved.action, 'move')
+  assert.equal(moved.plans[0].date, '2026-11-18')
+  assert.equal(plans[0].date, '2026-11-15')
+  assert.notEqual(moved.plans[0], plans[0])
 })
