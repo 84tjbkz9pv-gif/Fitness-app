@@ -1,9 +1,9 @@
 import {
   WORKOUT_TYPES,
   dayHeading,
+  dayKey,
   distanceFieldText,
   formatDateTimeLocal,
-  longDate,
   messageFor,
   parseDateTimeLocal,
   typeTitle,
@@ -14,6 +14,8 @@ import {
   createBackup,
 } from './logic.js'
 import { createTrainer } from './train.js'
+import { calendarView, todayPlanner } from './calendar.js'
+import { addDays, londonKey, londonLong, mondayOf, movePlan, removePlan } from './plan.js'
 import { BUILT_IN_EXERCISES, doneSetCount, sessionMinutes } from './gym.js'
 import { decodeRoutineLink, importRoutine } from './routine-link.js'
 import {
@@ -31,17 +33,21 @@ import {
   loadLockout,
   loadPinRecord,
   loadExercises,
+  loadPlans,
   loadRoutines,
   loadSessions,
   loadWorkouts,
   putExercise,
+  putPlan,
   putRoutine,
   putSession,
   putWorkout,
+  deletePlan,
   deleteRoutine,
   deleteSession,
   removeWorkout,
   replaceExercises,
+  replacePlans,
   replaceRoutines,
   replaceSessions,
   replaceWorkouts,
@@ -67,6 +73,7 @@ const banner = document.querySelector('#banner')
 const addButton = document.querySelector('#add-button')
 const tabToday = document.querySelector('#tab-today')
 const tabTrain = document.querySelector('#tab-train')
+const tabCalendar = document.querySelector('#tab-calendar')
 const tabHistory = document.querySelector('#tab-history')
 const editor = document.querySelector('#editor')
 const form = document.querySelector('#workout-form')
@@ -106,6 +113,9 @@ let workouts = []
 let routines = []
 let sessions = []
 let customExercises = []
+let plans = []
+let selectedKey = null
+let weekMonday = null
 let screen = 'today'
 let editingId = null
 let pendingImport = null
@@ -125,6 +135,7 @@ for (const type of WORKOUT_TYPES) {
 addButton.addEventListener('click', () => openEditor(null))
 tabToday.addEventListener('click', () => showScreen('today'))
 tabTrain.addEventListener('click', () => showScreen('train'))
+tabCalendar.addEventListener('click', () => showScreen('calendar'))
 tabHistory.addEventListener('click', () => showScreen('history'))
 main.addEventListener('click', onMainClick)
 form.addEventListener('submit', onSave)
@@ -334,11 +345,12 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
       loadExercises(),
+      loadPlans(),
     ])
   } catch (error) {
     console.error(error)
@@ -346,6 +358,7 @@ async function unlockApp() {
     routines = []
     sessions = []
     customExercises = []
+    plans = []
     showBanner('Could not open saved workouts on this phone.')
   }
   render()
@@ -358,12 +371,16 @@ function lockApp() {
   routines = []
   sessions = []
   customExercises = []
+  plans = []
+  selectedKey = null
+  weekMonday = null
   trainer.reset()
   hiddenAt = null
   if (editor.open) editor.close()
   if (backupDialog.open) backupDialog.close()
   if (settingsDialog.open) settingsDialog.close()
   if (routineLinkDialog.open) routineLinkDialog.close()
+  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close()
   main.replaceChildren()
   shell.hidden = true
   unlockPin.value = ''
@@ -406,29 +423,128 @@ function showScreen(next) {
 
 function render() {
   const now = new Date()
-  const titles = { today: 'Today', train: 'Train', history: 'History' }
+  const titles = { today: 'Today', train: 'Train', calendar: 'Calendar', history: 'History' }
   screenTitle.textContent = titles[screen]
-  screenDate.textContent = screen === 'today' ? longDate(now) : ''
+  const selection = plannerSelection(now)
+  screenDate.textContent = screen === 'today' ? londonLong(selection.selectedKey) : ''
   screenDate.hidden = screen !== 'today'
   tabToday.setAttribute('aria-current', screen === 'today' ? 'page' : 'false')
   tabTrain.setAttribute('aria-current', screen === 'train' ? 'page' : 'false')
+  tabCalendar.setAttribute('aria-current', screen === 'calendar' ? 'page' : 'false')
   tabHistory.setAttribute('aria-current', screen === 'history' ? 'page' : 'false')
   if (screen === 'train') {
     trainer.render(main)
     return
   }
-  main.replaceChildren(screen === 'today' ? todayView(now) : historyView(now))
+  if (screen === 'calendar') {
+    main.replaceChildren(calendarView(plannerState(selection), plannerActions()))
+    return
+  }
+  main.replaceChildren(screen === 'today'
+    ? todayPlanner(plannerState(selection), plannerActions())
+    : historyView(now))
 }
 
-function todayView(now) {
-  const entries = entriesOnDay(now)
-  if (entries.length === 0) {
-    return emptyState(
-      'Nothing logged today',
-      'Add a run, walk, or gym session when you are ready.',
-    )
+function plannerSelection(now) {
+  const todayKey = londonKey(now)
+  if (!selectedKey || !weekMonday) {
+    selectedKey = todayKey
+    weekMonday = mondayOf(todayKey)
   }
-  return activityList([{ day: now, entries }], now, false)
+  return { todayKey, selectedKey, weekMonday }
+}
+
+function plannerState(selection) {
+  return {
+    ...selection,
+    plans,
+    routines,
+    sessions,
+    workouts,
+    exercises: customExercises,
+  }
+}
+
+function plannerActions() {
+  return {
+    selectDay(date) {
+      selectedKey = date
+      weekMonday = mondayOf(date)
+      render()
+    },
+    shiftWeek(delta) {
+      selectedKey = addDays(selectedKey, delta * 7)
+      weekMonday = addDays(weekMonday, delta * 7)
+      render()
+    },
+    addPlan: savePlan,
+    startPlan(plan) {
+      const routine = routines.find((item) => item.id === plan.routineId)
+      if (!routine) return
+      screen = 'train'
+      trainer.startRoutine(routine)
+      render()
+    },
+    movePlan: movePlanned,
+    removePlan: dropPlan,
+  }
+}
+
+async function savePlan(date, routineId) {
+  if (plans.some((plan) => plan.date === date && plan.routineId === routineId)) {
+    showBanner('That routine is already planned on that day.')
+    return
+  }
+  const plan = { id: newId(), date, routineId }
+  try {
+    await putPlan(plan)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not save this plan on this phone.')
+    return
+  }
+  plans.push(plan)
+  selectedKey = date
+  weekMonday = mondayOf(date)
+  render()
+}
+
+async function movePlanned(id, date) {
+  const result = movePlan(plans, id, date)
+  if (!result.ok) {
+    showBanner(result.error === 'alreadyPlanned'
+      ? 'That routine is already planned on that day.'
+      : 'Choose a day.')
+    return
+  }
+  const plan = result.plans.find((item) => item.id === id)
+  if (!plan || plan.date === plans.find((item) => item.id === id)?.date) {
+    render()
+    return
+  }
+  try {
+    await putPlan(plan)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not move this plan on this phone.')
+    return
+  }
+  plans = result.plans
+  selectedKey = plan.date
+  weekMonday = mondayOf(plan.date)
+  render()
+}
+
+async function dropPlan(id) {
+  try {
+    await deletePlan(id)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not remove this plan on this phone.')
+    return
+  }
+  plans = removePlan(plans, id)
+  render()
 }
 
 function historyView(now) {
@@ -440,12 +556,6 @@ function historyView(now) {
     )
   }
   return activityList(groups, now, true)
-}
-
-function entriesOnDay(day) {
-  return activityGroups()
-    .filter((group) => dayKey(group.day) === dayKey(day))
-    .flatMap((group) => group.entries)
 }
 
 function activityGroups() {
@@ -656,6 +766,7 @@ async function exportBackup() {
       exercises: customExercises,
       routines,
       sessions,
+      plans,
     }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
@@ -713,6 +824,7 @@ async function importBackup() {
     await replaceRoutines(pendingImport.routines)
     await replaceSessions(pendingImport.sessions)
     await replaceExercises(pendingImport.exercises)
+    await replacePlans(pendingImport.plans ?? [])
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
@@ -722,6 +834,7 @@ async function importBackup() {
   routines = pendingImport.routines
   sessions = pendingImport.sessions
   customExercises = pendingImport.exercises
+  plans = pendingImport.plans ?? []
   trainer.reset()
   backupDialog.close()
   render()
@@ -729,7 +842,7 @@ async function importBackup() {
 }
 
 function importSummaryText(count) {
-  const tail = 'Importing replaces the workouts, routines, and gym sessions on this phone.'
+  const tail = 'Importing replaces the workouts, routines, gym sessions, and plan on this phone.'
   if (count === 0) return `This backup has no workouts. ${tail}`
   if (count === 1) return `This backup has 1 workout. ${tail}`
   return `This backup has ${count} workouts. ${tail}`
@@ -766,6 +879,11 @@ const trainer = createTrainer({
   async deleteRoutine(id) {
     await deleteRoutine(id)
     routines = routines.filter((routine) => routine.id !== id)
+    const kept = plans.filter((plan) => plan.routineId !== id)
+    if (kept.length !== plans.length) {
+      plans = kept
+      await replacePlans(plans)
+    }
   },
   async putSession(session) {
     await putSession(session)

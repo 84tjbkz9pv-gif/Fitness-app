@@ -1,12 +1,14 @@
 import { workoutFromStored, workoutToStored } from './logic.js'
+import { planFromStored } from './plan.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 3
+const DB_VERSION = 4
 const STORE = 'workouts'
 const SETTINGS = 'settings'
 const ROUTINES = 'routines'
 const SESSIONS = 'sessions'
 const EXERCISES = 'exercises'
+const PLANS = 'plans'
 let databasePromise
 
 function openDatabase() {
@@ -21,7 +23,7 @@ function openDatabase() {
         if (!database.objectStoreNames.contains(SETTINGS)) {
           database.createObjectStore(SETTINGS)
         }
-        for (const name of [ROUTINES, SESSIONS, EXERCISES]) {
+        for (const name of [ROUTINES, SESSIONS, EXERCISES, PLANS]) {
           if (!database.objectStoreNames.contains(name)) database.createObjectStore(name, { keyPath: 'id' })
         }
       }
@@ -114,6 +116,23 @@ export function putExercise(exercise) {
 
 export function replaceExercises(exercises) {
   return replaceAll(EXERCISES, exercises)
+}
+
+export async function loadPlans() {
+  const rows = await readAll(PLANS)
+  return rows.map(planFromStored).filter(Boolean)
+}
+
+export function putPlan(plan) {
+  return putRecord(PLANS, plan)
+}
+
+export function deletePlan(id) {
+  return deleteRecord(PLANS, id)
+}
+
+export function replacePlans(plans) {
+  return replaceAll(PLANS, plans)
 }
 
 function sessionToRow(session) {
