@@ -1,0 +1,55 @@
+# Publishes the static site to GitHub Pages on every push to main.
+# A private repository on GitHub Free cannot use Pages, so the deploy job
+# fails until the repository is public or the account includes private Pages.
+
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run unit tests
+        run: node --test
+      - name: Run unit tests in UK time
+        run: TZ=Europe/London node --test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Collect the site
+        run: |
+          mkdir -p _site
+          cp index.html styles.css sw.js manifest.json _site/
+          cp -r js icons _site/
+          touch _site/.nojekyll
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
