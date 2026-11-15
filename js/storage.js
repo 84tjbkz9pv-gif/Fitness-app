@@ -3,7 +3,7 @@ import { workoutFromStored, workoutToStored } from './logic.js'
 import { planFromStored } from './plan.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 5
+const DB_VERSION = 6
 const STORE = 'workouts'
 const SETTINGS = 'settings'
 const ROUTINES = 'routines'
@@ -11,6 +11,7 @@ const SESSIONS = 'sessions'
 const EXERCISES = 'exercises'
 const PLANS = 'plans'
 const FOODS = 'foods'
+const PRODUCTS = 'products'
 let databasePromise
 
 function openDatabase() {
@@ -27,6 +28,9 @@ function openDatabase() {
         }
         for (const name of [ROUTINES, SESSIONS, EXERCISES, PLANS, FOODS]) {
           if (!database.objectStoreNames.contains(name)) database.createObjectStore(name, { keyPath: 'id' })
+        }
+        if (!database.objectStoreNames.contains(PRODUCTS)) {
+          database.createObjectStore(PRODUCTS, { keyPath: 'barcode' })
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -152,6 +156,14 @@ export function deleteFood(id) {
 
 export function replaceFoods(foods) {
   return replaceAll(FOODS, foods)
+}
+
+export function loadProducts() {
+  return readAll(PRODUCTS)
+}
+
+export function putProduct(product) {
+  return putRecord(PRODUCTS, product)
 }
 
 export async function loadKcalTarget() {

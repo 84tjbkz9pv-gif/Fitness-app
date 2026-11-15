@@ -17,6 +17,8 @@ import { createTrainer } from './train.js'
 import { calendarView, todayPlanner } from './calendar.js'
 import { copyMeal, emptyCopyMessage, foodProfileFromStored, yesterdayKey } from './food.js'
 import { foodScreen, foodTodayCard, openFoodDialog, openTargetSheet } from './food-view.js'
+import { fetchOffProduct } from './off.js'
+import { openPortion, openScanner } from './scanner.js'
 import { addDays, londonKey, londonLong, mondayOf, movePlan, removePlan } from './plan.js'
 import { BUILT_IN_EXERCISES, doneSetCount, sessionMinutes } from './gym.js'
 import { decodeRoutineLink, importRoutine } from './routine-link.js'
@@ -39,12 +41,14 @@ import {
   loadFoods,
   loadKcalTarget,
   loadPlans,
+  loadProducts,
   loadRoutines,
   loadSessions,
   loadWorkouts,
   putExercise,
   putFood,
   putPlan,
+  putProduct,
   putRoutine,
   putSession,
   putWorkout,
@@ -126,6 +130,7 @@ let sessions = []
 let customExercises = []
 let plans = []
 let foods = []
+let products = []
 let kcalTarget = null
 let foodProfile = null
 let selectedKey = null
@@ -296,6 +301,7 @@ async function onReset(event) {
   customExercises = []
   plans = []
   foods = []
+  products = []
   kcalTarget = null
   foodProfile = null
   trainer.reset()
@@ -365,7 +371,7 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
@@ -374,6 +380,7 @@ async function unlockApp() {
       loadFoods(),
       loadKcalTarget(),
       loadFoodProfile(),
+      loadProducts(),
     ])
     foodProfile = foodProfileFromStored(foodProfile)
     if (foodProfile === undefined) foodProfile = null
@@ -385,6 +392,7 @@ async function unlockApp() {
     customExercises = []
     plans = []
     foods = []
+    products = []
     kcalTarget = null
     foodProfile = null
     showBanner('Could not open saved workouts on this phone.')
@@ -401,6 +409,7 @@ function lockApp() {
   customExercises = []
   plans = []
   foods = []
+  products = []
   kcalTarget = null
   foodProfile = null
   selectedKey = null
@@ -528,10 +537,13 @@ function foodActions() {
       render()
     },
     addFood(meal) {
-      openFoodDialog({ meal, entry: null, foods, date: selectedKey }, foodSaveActions())
+      openFoodDialog({ meal, entry: null, foods, products, date: selectedKey }, foodSaveActions())
     },
     editFood(entry) {
-      openFoodDialog({ meal: entry.meal, entry, foods, date: entry.date }, foodSaveActions())
+      openFoodDialog({ meal: entry.meal, entry, foods, products, date: entry.date }, foodSaveActions())
+    },
+    scan(meal) {
+      startScan(meal)
     },
     openTarget() {
       showCalorieTarget()
@@ -646,7 +658,59 @@ function foodSaveActions() {
     deleteFood: removeFood,
     copyYesterday,
     addRecent,
+    scan: startScan,
+    scanProduct(product, meal) {
+      openPortion({ product, meal }, { saveScanned: saveScannedFood })
+    },
   }
+}
+
+function startScan(meal) {
+  openScanner({ meal }, {
+    lookup: lookupBarcode,
+    notFound(mealId, code) {
+      showBanner('Not found')
+      openFoodDialog({
+        meal: mealId,
+        entry: null,
+        foods,
+        products,
+        date: selectedKey,
+        barcode: code,
+      }, foodSaveActions())
+    },
+    saveScanned: saveScannedFood,
+  })
+}
+
+async function lookupBarcode(code) {
+  try {
+    const result = await fetchOffProduct(code)
+    if (!result.found) return { ok: false }
+    try {
+      await rememberProduct(result.product)
+    } catch (error) {
+      console.error(error)
+    }
+    return { ok: true, product: result.product }
+  } catch (error) {
+    console.error(error)
+    const cached = products.find((item) => item.barcode === code)
+    if (cached) return { ok: true, product: cached, offline: true }
+    return { ok: false }
+  }
+}
+
+async function rememberProduct(product) {
+  const stored = { ...product, updatedAt: new Date().toISOString() }
+  await putProduct(stored)
+  const index = products.findIndex((item) => item.barcode === stored.barcode)
+  if (index === -1) products.push(stored)
+  else products[index] = stored
+}
+
+function saveScannedFood(value) {
+  return saveFood({ ...value, date: selectedKey, id: null })
 }
 
 function plannerActions() {

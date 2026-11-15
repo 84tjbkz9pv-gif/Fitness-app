@@ -50,7 +50,7 @@ export function foodTodayCard(state, onOpen) {
   return button
 }
 
-export function openFoodDialog({ meal, entry, foods, date }, actions) {
+export function openFoodDialog({ meal, entry, foods, products = [], date, barcode = null }, actions) {
   const dialog = document.createElement('dialog')
   dialog.className = 'editor'
   const form = document.createElement('form')
@@ -71,8 +71,23 @@ export function openFoodDialog({ meal, entry, foods, date }, actions) {
   save.className = 'pill'
   save.textContent = 'Save'
   form.append(title, name.label, amount.label, kcal.label, protein.label, carbs.label, fat.label, error, save)
+  if (barcode) {
+    const note = document.createElement('p')
+    note.className = 'help'
+    note.textContent = 'Not found. The barcode is kept so you can type the kcal.'
+    form.append(note)
+  }
   if (!entry) {
-    form.append(recentList(foods, meal, dialog, actions))
+    const scan = document.createElement('button')
+    scan.type = 'button'
+    scan.className = 'wide secondary'
+    scan.textContent = 'Scan barcode'
+    scan.addEventListener('click', () => {
+      dialog.close()
+      actions.scan(meal)
+    })
+    form.append(scan)
+    form.append(recentList(foods, products, meal, dialog, actions))
     const copy = document.createElement('button')
     copy.type = 'button'
     copy.className = 'wide secondary'
@@ -109,7 +124,7 @@ export function openFoodDialog({ meal, entry, foods, date }, actions) {
       proteinText: protein.input.value,
       carbsText: carbs.input.value,
       fatText: fat.input.value,
-      barcode: entry?.barcode ?? null,
+      barcode: entry?.barcode ?? barcode,
     })
     if (!parsed.ok) {
       error.hidden = false
@@ -294,23 +309,32 @@ function mealSection(meal, state, actions) {
     }
     section.append(list)
   }
+  const actionsRow = document.createElement('div')
+  actionsRow.className = 'meal-actions'
   const add = document.createElement('button')
   add.type = 'button'
   add.className = 'text-add'
   add.textContent = '+ Add food'
   add.addEventListener('click', () => actions.addFood(meal.id))
-  section.append(add)
+  const scan = document.createElement('button')
+  scan.type = 'button'
+  scan.className = 'text-add'
+  scan.textContent = 'Scan'
+  scan.addEventListener('click', () => actions.scan(meal.id))
+  actionsRow.append(add, scan)
+  section.append(actionsRow)
   return section
 }
 
-function recentList(foods, meal, dialog, actions) {
+function recentList(foods, products, meal, dialog, actions) {
   const wrap = document.createElement('div')
   wrap.className = 'recent-foods'
   const heading = document.createElement('h2')
   heading.textContent = 'Recent'
   wrap.append(heading)
   const items = recentFoods(foods)
-  if (items.length === 0) {
+  const cached = products.filter((product) => !items.some((item) => item.name.trim().toLocaleLowerCase('en-GB') === product.name.trim().toLocaleLowerCase('en-GB')))
+  if (items.length === 0 && cached.length === 0) {
     const empty = document.createElement('p')
     empty.className = 'help'
     empty.textContent = 'Foods you add show up here.'
@@ -325,6 +349,17 @@ function recentList(foods, meal, dialog, actions) {
     button.addEventListener('click', () => {
       dialog.close()
       actions.addRecent(entry, meal)
+    })
+    wrap.append(button)
+  }
+  for (const product of cached.slice(0, Math.max(0, 10 - items.length))) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'wide secondary'
+    button.textContent = product.brand ? `${product.name} · ${product.brand}` : product.name
+    button.addEventListener('click', () => {
+      dialog.close()
+      actions.scanProduct(product, meal)
     })
     wrap.append(button)
   }
