@@ -73,7 +73,7 @@ test('weight entries round trip in a version 6 backup and older backups have non
   const backup = createBackup([], new Date('2026-11-15T12:00:00.000Z'), {
     weights: [{ id: 'w1', date: '2026-11-15', kg: 60.5 }],
   })
-  assert.equal(backup.version, 6)
+  assert.equal(backup.version, 7)
   const parsed = parseBackup(JSON.stringify(backup))
   assert.equal(parsed.weights[0].kg, 60.5)
   const older = parseBackup(JSON.stringify({ version: 5, workouts: [], exercises: [], routines: [], sessions: [], plans: [] }))

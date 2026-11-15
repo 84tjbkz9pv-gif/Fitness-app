@@ -22,6 +22,8 @@ import { openPortion, openScanner } from './scanner.js'
 import { goalCard, openPlanSetup } from './training-view.js'
 import { bestEstimates, isLosing, recentWeekReports } from './overview.js'
 import { openWeightDialog, overviewScreen, weightTodayCard } from './overview-view.js'
+import { openRunDialog } from './run-view.js'
+import { dayTaken, moveRun as moveRunList, parseRun } from './runs.js'
 import {
   generatePlanEntries,
   liftProgress,
@@ -57,6 +59,7 @@ import {
   loadTrainingPlan,
   loadWeights,
   loadRoutines,
+  loadRuns,
   loadSessions,
   loadWorkouts,
   putExercise,
@@ -82,6 +85,9 @@ import {
   putWeight,
   deleteWeight,
   replaceWeights,
+  putRun,
+  deleteRun,
+  replaceRuns,
   saveKcalTarget,
   saveLockout,
   savePinRecord,
@@ -153,6 +159,7 @@ let kcalTarget = null
 let foodProfile = null
 let trainingPlan = null
 let weights = []
+let runs = []
 let kcalMap = null
 let selectedKey = null
 let weekMonday = null
@@ -324,6 +331,7 @@ async function onReset(event) {
   foods = []
   products = []
   weights = []
+  runs = []
   kcalTarget = null
   foodProfile = null
   trainingPlan = null
@@ -394,7 +402,7 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan, weights] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile, products, trainingPlan, weights, runs] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
@@ -406,6 +414,7 @@ async function unlockApp() {
       loadProducts(),
       loadTrainingPlan(),
       loadWeights(),
+      loadRuns(),
     ])
     foodProfile = foodProfileFromStored(foodProfile)
     if (foodProfile === undefined) foodProfile = null
@@ -421,6 +430,7 @@ async function unlockApp() {
     foods = []
     products = []
     weights = []
+    runs = []
     kcalTarget = null
     foodProfile = null
     trainingPlan = null
@@ -440,6 +450,7 @@ function lockApp() {
   foods = []
   products = []
   weights = []
+  runs = []
   kcalTarget = null
   foodProfile = null
   trainingPlan = null
@@ -541,6 +552,7 @@ function render() {
         sessions,
         targetFor: kcalOn,
         losing: isLosing(trainingPlan, foodProfile),
+        runs,
       }),
       estimates: bestEstimates(sessions, (id) => exerciseName(id, customExercises)),
     }, {
@@ -570,6 +582,7 @@ function plannerState(selection) {
     workouts,
     exercises: customExercises,
     trainingPlan,
+    runs,
     kcalFor: kcalOn,
   }
 }
@@ -795,6 +808,17 @@ function plannerActions() {
     },
     movePlan: movePlanned,
     removePlan: dropPlan,
+    addRun(date) {
+      if (dayTaken(plans, runs, date)) {
+        showBanner('That day already has a session.')
+        return
+      }
+      openRunDialog(null, date, runSaveActions())
+    },
+    editRun(run) {
+      openRunDialog(run, run.date, runSaveActions())
+    },
+    moveRun: moveSavedRun,
     editTrainingPlan() {
       openPlanSetup({
         today: londonKey(new Date()),
@@ -895,7 +919,7 @@ async function commitTrainingPlan(value) {
     weekdays: value.weekdays,
     routineIds: value.routineIds,
     newId,
-  })
+  }).filter((plan) => !runs.some((run) => run.date === plan.date))
   const next = mergeGenerated(plans, generated)
   const removed = plans.filter((plan) => plan.source === 'plan' && !next.some((item) => item.id === plan.id))
   try {
@@ -922,7 +946,88 @@ async function commitTrainingPlan(value) {
   render()
 }
 
+function runSaveActions() {
+  return { parse: parseRun, saveRun: storeRun, deleteRun: removeRun }
+}
+
+async function storeRun(value) {
+  if (dayTaken(plans, runs, value.date, value.id)) {
+    showBanner('That day already has a session.')
+    return
+  }
+  const entry = {
+    id: value.id ?? newId(),
+    date: value.date,
+    type: value.type,
+    targetDistanceKm: value.targetDistanceKm,
+    targetPaceMinPerKm: value.targetPaceMinPerKm,
+    intervals: value.intervals,
+    actualDistanceKm: value.actualDistanceKm,
+    actualMinutes: value.actualMinutes,
+    notes: value.notes,
+  }
+  try {
+    await putRun(entry)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not save this run on this phone.')
+    return
+  }
+  const index = runs.findIndex((item) => item.id === entry.id)
+  if (index === -1) runs.push(entry)
+  else runs[index] = entry
+  selectedKey = entry.date
+  weekMonday = mondayOf(entry.date)
+  render()
+}
+
+async function removeRun(id) {
+  try {
+    await deleteRun(id)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not delete this run on this phone.')
+    return
+  }
+  runs = runs.filter((item) => item.id !== id)
+  render()
+}
+
+async function moveSavedRun(id, date) {
+  if (!date || plans.some((plan) => plan.date === date)) {
+    showBanner('That day already has a session.')
+    render()
+    return
+  }
+  const result = moveRunList(runs, id, date)
+  if (!result.ok) {
+    showBanner(result.error === 'taken' ? 'That day already has a session.' : 'Choose a day.')
+    render()
+    return
+  }
+  const run = result.runs.find((item) => item.id === id)
+  if (!run || run.date === runs.find((item) => item.id === id)?.date) {
+    render()
+    return
+  }
+  try {
+    await putRun(run)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not move this run on this phone.')
+    return
+  }
+  runs = result.runs
+  selectedKey = run.date
+  weekMonday = mondayOf(run.date)
+  render()
+}
+
 async function savePlan(date, routineId) {
+  if (runs.some((run) => run.date === date)) {
+    showBanner('That day already has a session.')
+    return
+  }
   if (plans.some((plan) => plan.date === date && plan.routineId === routineId)) {
     showBanner('That routine is already planned on that day.')
     return
@@ -942,6 +1047,11 @@ async function savePlan(date, routineId) {
 }
 
 async function movePlanned(id, date) {
+  if (runs.some((run) => run.date === date)) {
+    showBanner('That day already has a session.')
+    render()
+    return
+  }
   const result = movePlan(plans, id, date)
   if (!result.ok) {
     showBanner(result.error === 'alreadyPlanned'
@@ -1204,6 +1314,7 @@ async function exportBackup() {
       foodProfile,
       trainingPlan,
       weights,
+      runs,
     }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
@@ -1267,6 +1378,7 @@ async function importBackup() {
     await saveFoodProfile(pendingImport.foodProfile ?? null)
     await saveTrainingPlan(pendingImport.trainingPlan ?? null)
     await replaceWeights(pendingImport.weights ?? [])
+    await replaceRuns(pendingImport.runs ?? [])
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
@@ -1282,6 +1394,7 @@ async function importBackup() {
   foodProfile = pendingImport.foodProfile ?? null
   trainingPlan = pendingImport.trainingPlan ?? null
   weights = pendingImport.weights ?? []
+  runs = pendingImport.runs ?? []
   trainer.reset()
   backupDialog.close()
   render()
@@ -1289,7 +1402,7 @@ async function importBackup() {
 }
 
 function importSummaryText(count) {
-  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, food log, and weight log on this phone.'
+  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, food log, weight log, and runs on this phone.'
   if (count === 0) return `This backup has no workouts. ${tail}`
   if (count === 1) return `This backup has 1 workout. ${tail}`
   return `This backup has ${count} workouts. ${tail}`

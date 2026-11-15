@@ -7,6 +7,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 ## What you can do
 
 - See today's date and the workouts that started today. A week strip shows each day. Plan a routine on a day, then start it from Today.
+- Calendar can plan a run (easy, tempo, intervals, or long) on a day that does not already have a gym session. Press and hold the card to move it. Log the distance and time on the card. There is no GPS.
 - Today has Log weight and Overview. Overview shows the weight log, the last four weeks, and an estimated 1 rep max from finished gym sets.
 - Calendar lists each week. Make a plan from a goal date and goal weight, and the calendar fills training days through that date. A planned routine can be moved or removed. Press and hold a planned card to drag it. A logged workout stays on the day it was done.
 - On Food, log breakfast, lunch, tea and snacks in kcal. Scan a barcode or type it. A daily target is optional. The calculator uses the Mifflin-St Jeor formula and is an estimate, not advice.
