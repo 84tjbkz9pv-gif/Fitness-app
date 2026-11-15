@@ -11,6 +11,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 - Edit or delete a workout.
 - Browse every logged workout, grouped by day. Today is included, under the heading Today.
 - On Train, save a gym routine, start it, and log kg and reps. Each set shows the numbers from the last time you did that exercise. Personal bests are marked when you finish, and each exercise has a progress chart.
+- Add a routine from a link. On Train, paste the link or code. A home screen icon keeps its own saved data, so paste there rather than opening the link in Safari.
 
 Lists use British dates, for example Sunday, 15 November 2026, and 24-hour times. The start control in the form follows the language and clock already set on the iPhone.
 

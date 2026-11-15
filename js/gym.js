@@ -83,8 +83,9 @@ export function previousSet(sessions, { exerciseId, setIndex, before }) {
   if (!last) return null
   const exercise = last.exercises.find((item) => item.exerciseId === exerciseId)
   const set = exercise?.sets[setIndex]
-  if (!set || !(set.weightKg > 0) || !(set.reps > 0)) return null
-  return { weightKg: set.weightKg, reps: set.reps }
+  if (!set || !(set.reps > 0)) return null
+  if (set.weightKg != null && !(set.weightKg > 0)) return null
+  return { weightKg: set.weightKg ?? null, reps: set.reps }
 }
 
 export function bestsFromSets(sets) {
@@ -92,7 +93,7 @@ export function bestsFromSets(sets) {
   let estimated1Rm = null
   let bestVolume = null
   for (const set of sets) {
-    if (!(set.weightKg > 0) || !(set.reps > 0)) continue
+    if (set.warmUp || !(set.weightKg > 0) || !(set.reps > 0)) continue
     if (!heaviest || set.weightKg > heaviest.weightKg) {
       heaviest = { weightKg: set.weightKg, reps: set.reps }
     }
@@ -115,7 +116,7 @@ export function doneSetsBefore(sessions, exerciseId, sessionId) {
     for (const exercise of session.exercises) {
       if (exercise.exerciseId !== exerciseId) continue
       for (const set of exercise.sets) {
-        if (set.done) sets.push(set)
+        if (set.done && !set.warmUp) sets.push(set)
       }
     }
   }
@@ -123,7 +124,7 @@ export function doneSetsBefore(sessions, exerciseId, sessionId) {
 }
 
 export function badgesForSet(set, earlierSets) {
-  if (!set?.done || !(set.weightKg > 0) || !(set.reps > 0)) return []
+  if (!set?.done || set.warmUp || !(set.weightKg > 0) || !(set.reps > 0)) return []
   const prior = bestsFromSets(earlierSets)
   const badges = []
   if (!prior.heaviest || set.weightKg > prior.heaviest.weightKg) badges.push('weight')
@@ -204,6 +205,7 @@ export function routineFromSession(session, routine = null) {
   return session.exercises
     .map((exercise, index) => ({
       exerciseId: exercise.exerciseId,
+      repsOnly: exercise.repsOnly === true,
       sets: exercise.sets.map((set, setIndex) => {
         const planned = routine?.exercises[index]?.exerciseId === exercise.exerciseId
           ? routine.exercises[index].sets[setIndex]
@@ -211,6 +213,7 @@ export function routineFromSession(session, routine = null) {
         return {
           reps: set.reps ?? planned?.reps ?? null,
           weightKg: set.weightKg ?? planned?.weightKg ?? null,
+          warmUp: set.warmUp === true || planned?.warmUp === true,
         }
       }),
     }))
@@ -225,7 +228,30 @@ export function sessionMinutes(session) {
 
 export function doneSetCount(session) {
   return session.exercises.reduce(
-    (total, exercise) => total + exercise.sets.filter((set) => set.done).length,
+    (total, exercise) => total + exercise.sets.filter((set) => set.done && !set.warmUp).length,
     0,
   )
+}
+
+export function sessionVolumeKg(session) {
+  let total = 0
+  for (const exercise of session.exercises) {
+    for (const set of exercise.sets) {
+      if (!set.done || set.warmUp || !(set.weightKg > 0) || !(set.reps > 0)) continue
+      total += set.weightKg * set.reps
+    }
+  }
+  return total
+}
+
+export function referenceText(weightKg, reps, repsOnly) {
+  if (reps == null) return '—'
+  if (repsOnly) return String(reps)
+  if (weightKg == null) return `– x ${reps}`
+  return `${formatKg(weightKg)}kg x ${reps}`
+}
+
+export function setBadge(sets, index) {
+  if (sets[index]?.warmUp) return 'W'
+  return String(sets.slice(0, index + 1).filter((set) => !set.warmUp).length)
 }

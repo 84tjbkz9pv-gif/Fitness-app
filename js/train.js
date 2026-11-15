@@ -13,8 +13,11 @@ import {
   parseReps,
   plansMatch,
   previousSet,
+  referenceText,
   routineFromSession,
   sessionMinutes,
+  sessionVolumeKg,
+  setBadge,
 } from './gym.js'
 import { longDate, timeLabel } from './logic.js'
 
@@ -29,8 +32,11 @@ export function createTrainer(api) {
   let confirmDeleteId = null
   let finishNote = null
   let routineMessage = ''
+  let liveDialog = null
+  let liveTimer = null
 
   function reset() {
+    stopLive()
     mode = 'home'
     routineDraft = null
     sessionDraft = null
@@ -41,6 +47,12 @@ export function createTrainer(api) {
   }
 
   function render(container) {
+    if (mode !== 'workout') stopLive()
+    if (mode === 'workout') {
+      paintLive()
+      container.replaceChildren()
+      return
+    }
     container.replaceChildren(view())
   }
 
@@ -119,6 +131,7 @@ export function createTrainer(api) {
     create.textContent = 'New routine'
     create.addEventListener('click', () => editRoutine(null))
     wrap.append(create)
+    wrap.append(linkImport())
 
     const exercisesHeading = document.createElement('h2')
     exercisesHeading.className = 'section-label'
@@ -266,23 +279,39 @@ export function createTrainer(api) {
       openSession(existing)
       return
     }
+    const startedAt = new Date()
     openSession({
       id: api.newId(),
       name: routine.name,
       routineId: routine.id,
-      startedAt: new Date(),
+      startedAt,
       finishedAt: null,
       exercises: routine.exercises.map((exercise) => ({
         exerciseId: exercise.exerciseId,
-        sets: exercise.sets.map((set) => ({
-          weightKg: null,
-          reps: null,
-          done: false,
-          targetWeightKg: set.weightKg,
-          targetReps: set.reps,
-        })),
+        repsOnly: exercise.repsOnly === true,
+        sets: exercise.sets.map((set, setIndex) => loggingSet(exercise, set, setIndex, startedAt)),
       })),
     })
+  }
+
+  function loggingSet(exercise, set, setIndex, startedAt) {
+    const previous = previousSet(api.sessions(), {
+      exerciseId: exercise.exerciseId,
+      setIndex,
+      before: startedAt,
+    })
+    const repsOnly = exercise.repsOnly === true
+    const reference = previous
+      ? { weightKg: previous.weightKg, reps: previous.reps }
+      : { weightKg: set.weightKg ?? null, reps: set.reps ?? null }
+    return {
+      weightKg: repsOnly ? null : reference.weightKg,
+      reps: reference.reps,
+      done: false,
+      warmUp: set.warmUp === true,
+      referenceWeightKg: repsOnly ? null : reference.weightKg,
+      referenceReps: reference.reps,
+    }
   }
 
   function openSession(session) {
@@ -292,36 +321,55 @@ export function createTrainer(api) {
     api.putSession(session).then(() => api.refresh())
   }
 
-  function workoutView() {
-    const wrap = document.createElement('div')
-    wrap.className = 'train'
-    const name = document.createElement('input')
-    name.value = sessionDraft.name
-    name.maxLength = 40
-    name.addEventListener('change', () => {
-      sessionDraft.name = name.value.trim() || 'Workout'
-      persistSession()
-    })
-    wrap.append(field('Workout', name))
-    wrap.append(...exerciseEditors(sessionDraft, true))
-    if (picking) wrap.append(picker(sessionDraft))
-    else {
-      const add = document.createElement('button')
-      add.type = 'button'
-      add.className = 'wide secondary'
-      add.textContent = 'Add exercise'
-      add.addEventListener('click', () => {
-        picking = true
-        api.refresh()
-      })
-      wrap.append(add)
+  function paintLive() {
+    if (!liveDialog) {
+      liveDialog = document.createElement('dialog')
+      liveDialog.className = 'live'
+      liveDialog.addEventListener('cancel', (event) => event.preventDefault())
+      document.body.append(liveDialog)
     }
+    liveDialog.replaceChildren(liveWorkout())
+    if (!liveDialog.open) liveDialog.showModal()
+    clearInterval(liveTimer)
+    liveTimer = setInterval(() => {
+      const clock = document.querySelector('#live-duration')
+      if (clock && sessionDraft) clock.textContent = formatDuration(sessionDraft.startedAt)
+    }, 1000)
+  }
+
+  function stopLive() {
+    clearInterval(liveTimer)
+    liveTimer = null
+    if (liveDialog?.open) liveDialog.close()
+  }
+
+  function liveWorkout() {
+    const wrap = document.createElement('div')
+    wrap.className = 'live-sheet'
+    const top = document.createElement('div')
+    top.className = 'live-top'
+    const title = document.createElement('h1')
+    title.textContent = sessionDraft.name
     const finish = document.createElement('button')
     finish.type = 'button'
-    finish.className = 'wide'
-    finish.textContent = 'Finish workout'
+    finish.className = 'finish'
+    finish.textContent = 'Finish'
     finish.addEventListener('click', () => finishSession())
-    wrap.append(finish)
+    top.append(title, finish)
+    wrap.append(top, statsRow())
+    if (picking) wrap.append(picker(sessionDraft))
+    for (const [exerciseIndex, exercise] of sessionDraft.exercises.entries()) {
+      wrap.append(liveExercise(exercise, exerciseIndex))
+    }
+    const add = document.createElement('button')
+    add.type = 'button'
+    add.className = 'add-exercise'
+    add.textContent = 'Add exercise'
+    add.addEventListener('click', () => {
+      picking = true
+      api.refresh()
+    })
+    wrap.append(add)
     const cancel = document.createElement('button')
     cancel.type = 'button'
     cancel.className = 'danger-text'
@@ -338,8 +386,8 @@ export function createTrainer(api) {
         'Cancel workout',
         async () => {
           await api.deleteSession(sessionDraft.id)
-          mode = 'home'
           confirmDeleteId = null
+          mode = 'home'
           api.refresh()
         },
         () => {
@@ -349,6 +397,177 @@ export function createTrainer(api) {
       ))
     }
     return wrap
+  }
+
+  function statsRow() {
+    const row = document.createElement('div')
+    row.className = 'live-stats'
+    row.append(
+      stat('Duration', formatDuration(sessionDraft.startedAt), 'live-duration'),
+      stat('Volume', `${formatKg(sessionVolumeKg(sessionDraft))} kg`),
+      stat('Sets', String(doneSetCount(sessionDraft))),
+    )
+    return row
+  }
+
+  function liveExercise(exercise, exerciseIndex) {
+    const block = document.createElement('section')
+    block.className = 'live-exercise'
+    const header = document.createElement('div')
+    header.className = 'live-exercise-head'
+    const name = document.createElement('button')
+    name.type = 'button'
+    name.className = 'exercise-link'
+    name.textContent = exerciseName(exercise.exerciseId, api.exercises())
+    name.addEventListener('click', () => openProgress(exercise.exerciseId))
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'quiet'
+    remove.textContent = 'Remove'
+    remove.addEventListener('click', () => {
+      sessionDraft.exercises.splice(exerciseIndex, 1)
+      persistSession()
+    })
+    header.append(name, remove)
+    block.append(header)
+
+    const table = document.createElement('div')
+    table.className = exercise.repsOnly ? 'set-table reps-only' : 'set-table'
+    table.append(tableHead(exercise.repsOnly))
+    exercise.sets.forEach((set, setIndex) => table.append(liveSet(exercise, set, setIndex)))
+    block.append(table)
+
+    const addSet = document.createElement('button')
+    addSet.type = 'button'
+    addSet.className = 'add-set'
+    addSet.textContent = '+ Add Set'
+    addSet.addEventListener('click', () => {
+      exercise.sets.push({
+        weightKg: null,
+        reps: null,
+        done: false,
+        warmUp: false,
+        referenceWeightKg: null,
+        referenceReps: null,
+      })
+      persistSession()
+    })
+    block.append(addSet)
+    return block
+  }
+
+  function tableHead(repsOnly) {
+    const head = document.createElement('div')
+    head.className = 'set-head'
+    const labels = repsOnly ? ['SET', 'PREVIOUS', 'REPS', ''] : ['SET', 'PREVIOUS', 'KG', 'REPS', '']
+    for (const label of labels) {
+      const cell = document.createElement('span')
+      cell.textContent = label
+      head.append(cell)
+    }
+    return head
+  }
+
+  function liveSet(exercise, set, setIndex) {
+    const row = document.createElement('div')
+    row.className = set.done ? 'set-line done' : 'set-line'
+    const badge = document.createElement('span')
+    badge.className = set.warmUp ? 'set-badge warm' : 'set-badge'
+    badge.textContent = setBadge(exercise.sets, setIndex)
+    const previous = document.createElement('span')
+    previous.className = 'previous-cell'
+    previous.textContent = referenceText(set.referenceWeightKg, set.referenceReps, exercise.repsOnly)
+    row.append(badge, previous)
+    if (!exercise.repsOnly) row.append(liveNumber(set.weightKg, 'decimal', (parsed) => {
+      set.weightKg = parsed
+      if (set.done && (set.weightKg == null || set.reps == null)) set.done = false
+      persistSession()
+    }, parseKg))
+    row.append(liveNumber(set.reps, 'numeric', (parsed) => {
+      set.reps = parsed
+      if (set.done && set.reps == null) set.done = false
+      persistSession()
+    }, parseReps))
+    const tick = document.createElement('button')
+    tick.type = 'button'
+    tick.className = set.done ? 'tick on' : 'tick'
+    tick.setAttribute('aria-label', set.done ? 'Mark set not done' : 'Mark set done')
+    tick.textContent = '✓'
+    tick.addEventListener('click', () => {
+      if (set.reps == null) return
+      set.done = !set.done
+      persistSession()
+    })
+    row.append(tick)
+    return row
+  }
+
+  function liveNumber(value, mode, onValue, parse) {
+    const input = document.createElement('input')
+    input.inputMode = mode
+    input.autocomplete = 'off'
+    input.enterKeyHint = 'done'
+    input.value = value == null ? '' : (mode === 'decimal' ? formatKg(value) : String(value))
+    input.addEventListener('change', () => {
+      const parsed = parse(input.value)
+      if (!parsed.ok) {
+        input.value = value == null ? '' : (mode === 'decimal' ? formatKg(value) : String(value))
+        return
+      }
+      onValue(parsed.value)
+    })
+    return input
+  }
+
+  function stat(label, value, id) {
+    const item = document.createElement('p')
+    const caption = document.createElement('span')
+    caption.textContent = label
+    const number = document.createElement('strong')
+    if (id) number.id = id
+    number.textContent = value
+    item.append(caption, number)
+    return item
+  }
+
+  function formatDuration(startedAt) {
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const rest = seconds % 60
+    const clock = `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+    return hours > 0 ? `${hours}:${clock}` : clock
+  }
+
+  function linkImport() {
+    const form = document.createElement('form')
+    form.className = 'link-import'
+    const label = document.createElement('label')
+    label.textContent = 'Add routine from link'
+    const input = document.createElement('textarea')
+    input.rows = 2
+    input.placeholder = 'Paste the link or code'
+    const button = document.createElement('button')
+    button.type = 'submit'
+    button.className = 'wide secondary'
+    button.textContent = 'Add routine'
+    const error = document.createElement('p')
+    error.className = 'error'
+    error.hidden = true
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      const result = api.importLink(input.value)
+      if (!result.ok) {
+        error.hidden = false
+        error.textContent = 'That is not a routine link.'
+        return
+      }
+      input.value = ''
+      error.hidden = true
+    })
+    label.append(input)
+    form.append(label, button, error)
+    return form
   }
 
   function exerciseEditors(draft, logging) {
@@ -381,7 +600,8 @@ export function createTrainer(api) {
         row.className = 'set-row'
         const number = document.createElement('span')
         number.className = 'set-number'
-        number.textContent = String(setIndex + 1)
+        number.textContent = setBadge(exercise.sets, setIndex)
+        if (set.warmUp) number.classList.add('warm')
         const weight = document.createElement('input')
         weight.inputMode = 'decimal'
         weight.autocomplete = 'off'
@@ -428,7 +648,9 @@ export function createTrainer(api) {
           if (logging && set.done && (set.weightKg == null || set.reps == null)) set.done = false
           if (logging) persistSession()
         })
-        row.append(number, weight, reps)
+        row.append(number)
+        if (!exercise.repsOnly) row.append(weight)
+        row.append(reps)
         if (logging) {
           const done = document.createElement('button')
           done.type = 'button'
