@@ -128,7 +128,7 @@ test('food entries and the calorie profile round trip in a version 4 backup', ()
       goal: 'lose-0.5',
     },
   })
-  assert.equal(backup.version, 4)
+  assert.equal(backup.version, 5)
   const parsed = parseBackup(JSON.stringify(backup))
   assert.equal(parsed.ok, true)
   assert.equal(parsed.foods[0].name, 'Porridge')

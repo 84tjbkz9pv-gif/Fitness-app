@@ -83,11 +83,16 @@ export function planFromStored(stored) {
   if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
   if (typeof stored.routineId !== 'string' || stored.routineId === '') return null
   if (!isDateKey(stored.date)) return null
-  return { id: stored.id, date: stored.date, routineId: stored.routineId }
+  if (stored.source != null && stored.source !== 'plan') return null
+  const plan = { id: stored.id, date: stored.date, routineId: stored.routineId }
+  if (stored.source === 'plan') plan.source = 'plan'
+  return plan
 }
 
 export function planToStored(plan) {
-  return { id: plan.id, date: plan.date, routineId: plan.routineId }
+  const stored = { id: plan.id, date: plan.date, routineId: plan.routineId }
+  if (plan.source === 'plan') stored.source = 'plan'
+  return stored
 }
 
 export const HOLD_MS = 400

@@ -183,6 +183,14 @@ export async function saveFoodProfile(profile) {
   await writeSetting('foodProfile', profile)
 }
 
+export function loadTrainingPlan() {
+  return readSetting('trainingPlan')
+}
+
+export async function saveTrainingPlan(plan) {
+  await writeSetting('trainingPlan', plan)
+}
+
 function sessionToRow(session) {
   return {
     ...session,

@@ -1,5 +1,6 @@
 import { foodFromStored, foodProfileFromStored, foodToStored } from './food.js'
 import { planFromStored, planToStored } from './plan.js'
+import { trainingPlanFromStored } from './training-plan.js'
 
 export const WORKOUT_TYPES = [
   { id: 'run', title: 'Run' },
@@ -11,7 +12,7 @@ export const WORKOUT_TYPES = [
   { id: 'other', title: 'Other' },
 ]
 
-export const BACKUP_VERSION = 4
+export const BACKUP_VERSION = 5
 
 const MESSAGES = {
   typeMissing: 'Choose a workout type.',
@@ -99,6 +100,7 @@ export function createBackup(workouts, exportedAt = new Date(), extra = {}) {
     foods: (extra.foods ?? []).slice().sort((left, right) => left.date.localeCompare(right.date) || left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)).map(foodToStored),
     kcalTarget: extra.kcalTarget ?? null,
     foodProfile: extra.foodProfile ?? null,
+    trainingPlan: extra.trainingPlan ?? null,
   }
 }
 
@@ -118,7 +120,7 @@ export function parseBackup(input) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) {
     return { ok: false, error: 'backupNotFitness' }
   }
-  if (document.version !== 1 && document.version !== 2 && document.version !== 3 && document.version !== 4) {
+  if (![1, 2, 3, 4, 5].includes(document.version)) {
     return { ok: false, error: 'backupVersion' }
   }
   if (!Array.isArray(document.workouts)) {
@@ -128,7 +130,7 @@ export function parseBackup(input) {
   const workouts = readRecords(document.workouts, workoutFromStored, 'backupWorkout')
   if (!workouts.ok) return workouts
   if (document.version === 1) {
-    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [], plans: [], foods: [], kcalTarget: null, foodProfile: null }
+    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [], plans: [], foods: [], kcalTarget: null, foodProfile: null, trainingPlan: null }
   }
 
   const exercises = readRecords(document.exercises ?? [], exerciseFromStored, 'backupExercise')
@@ -149,6 +151,8 @@ export function parseBackup(input) {
   if (kcalTarget === undefined) return { ok: false, error: 'backupFoodProfile' }
   const foodProfile = document.version >= 4 ? foodProfileFromStored(document.foodProfile ?? null) : null
   if (foodProfile === undefined) return { ok: false, error: 'backupFoodProfile' }
+  const trainingPlan = document.version >= 5 ? trainingPlanFromStored(document.trainingPlan ?? null) : null
+  if (trainingPlan === undefined) return { ok: false, error: 'backupPlan' }
   return {
     ok: true,
     workouts: workouts.items,
@@ -159,6 +163,7 @@ export function parseBackup(input) {
     foods: foods.items,
     kcalTarget,
     foodProfile,
+    trainingPlan,
   }
 }
 
