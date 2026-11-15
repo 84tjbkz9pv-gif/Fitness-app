@@ -178,7 +178,7 @@ function exerciseToStored(exercise) {
 function exerciseFromStored(stored) {
   if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
   const name = typeof stored.name === 'string' ? stored.name.trim() : ''
-  if (name === '' || name.length > 40) return null
+  if (name === '' || name.length > 60) return null
   return { id: stored.id, name }
 }
 
@@ -188,7 +188,12 @@ function routineToStored(routine) {
     name: routine.name,
     exercises: routine.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
-      sets: exercise.sets.map((set) => ({ reps: set.reps ?? null, weightKg: set.weightKg ?? null })),
+      repsOnly: exercise.repsOnly === true,
+      sets: exercise.sets.map((set) => ({
+        reps: set.reps ?? null,
+        weightKg: set.weightKg ?? null,
+        warmUp: set.warmUp === true,
+      })),
     })),
   }
 }
@@ -196,18 +201,19 @@ function routineToStored(routine) {
 function routineFromStored(stored) {
   if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
   const name = typeof stored.name === 'string' ? stored.name.trim() : ''
-  if (name === '' || name.length > 40 || !Array.isArray(stored.exercises) || stored.exercises.length === 0) return null
+  if (name === '' || name.length > 60 || !Array.isArray(stored.exercises) || stored.exercises.length === 0) return null
   const exercises = []
   for (const exercise of stored.exercises) {
     if (!exercise || typeof exercise.exerciseId !== 'string' || exercise.exerciseId === '') return null
     if (!Array.isArray(exercise.sets) || exercise.sets.length === 0) return null
+    if (exercise.repsOnly != null && typeof exercise.repsOnly !== 'boolean') return null
     const sets = []
     for (const set of exercise.sets) {
       const planned = optionalTarget(set)
       if (!planned) return null
       sets.push(planned)
     }
-    exercises.push({ exerciseId: exercise.exerciseId, sets })
+    exercises.push({ exerciseId: exercise.exerciseId, repsOnly: exercise.repsOnly === true, sets })
   }
   return { id: stored.id, name, exercises }
 }
@@ -221,10 +227,14 @@ function sessionToStored(session) {
     finishedAt: session.finishedAt ? session.finishedAt.toISOString() : null,
     exercises: session.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
+      repsOnly: exercise.repsOnly === true,
       sets: exercise.sets.map((set) => ({
         reps: set.reps ?? null,
         weightKg: set.weightKg ?? null,
         done: set.done === true,
+        warmUp: set.warmUp === true,
+        referenceWeightKg: set.referenceWeightKg ?? null,
+        referenceReps: set.referenceReps ?? null,
       })),
     })),
   }
@@ -233,7 +243,7 @@ function sessionToStored(session) {
 function sessionFromStored(stored) {
   if (!stored || typeof stored.id !== 'string' || stored.id === '') return null
   const name = typeof stored.name === 'string' ? stored.name.trim() : ''
-  if (name === '' || name.length > 40 || !Array.isArray(stored.exercises)) return null
+  if (name === '' || name.length > 60 || !Array.isArray(stored.exercises)) return null
   const startedAt = new Date(stored.startedAt)
   if (Number.isNaN(startedAt.getTime())) return null
   let finishedAt = null
@@ -252,7 +262,8 @@ function sessionFromStored(stored) {
       if (!logged) return null
       sets.push(logged)
     }
-    exercises.push({ exerciseId: exercise.exerciseId, sets })
+    if (exercise.repsOnly != null && typeof exercise.repsOnly !== 'boolean') return null
+    exercises.push({ exerciseId: exercise.exerciseId, repsOnly: exercise.repsOnly === true, sets })
   }
   return { id: stored.id, name, routineId, startedAt, finishedAt, exercises }
 }
@@ -262,7 +273,23 @@ function optionalTarget(set) {
   const reps = optionalCount(set.reps)
   const weightKg = optionalWeight(set.weightKg)
   if (reps === undefined || weightKg === undefined) return null
-  return { reps, weightKg }
+  if (set.warmUp != null && typeof set.warmUp !== 'boolean') return null
+  const referenceWeightKg = optionalNumber(set.referenceWeightKg)
+  const referenceReps = optionalNumber(set.referenceReps)
+  if (referenceWeightKg === undefined || referenceReps === undefined) return null
+  return {
+    reps,
+    weightKg,
+    warmUp: set.warmUp === true,
+    referenceWeightKg,
+    referenceReps,
+  }
+}
+
+function optionalNumber(value) {
+  if (value == null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return value
 }
 
 function loggedSet(set) {

@@ -452,3 +452,142 @@ textarea { min-height: 96px; resize: vertical; }
 @media (prefers-color-scheme: dark) {
   .tick.on { color: #102117; }
 }
+
+dialog.live {
+  width: 100vw;
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.live-sheet {
+  min-height: 100%;
+  padding: calc(12px + var(--safe-top)) 12px calc(28px + var(--safe-bottom));
+}
+
+.live-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-top h1 { font-size: 1.45rem; }
+
+.finish {
+  min-width: 96px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.live-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.live-stats p { display: grid; gap: 2px; }
+
+.live-stats span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.live-stats strong { font-size: 1.2rem; }
+
+.live-exercise { display: grid; gap: 8px; margin-top: 18px; }
+
+.live-exercise-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.live-exercise-head .exercise-link {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 1.15rem;
+  text-align: left;
+}
+
+.set-table { display: grid; gap: 6px; }
+
+.set-head, .set-line {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 72px 72px 48px;
+  gap: 6px;
+  align-items: center;
+}
+
+.set-table.reps-only .set-head,
+.set-table.reps-only .set-line {
+  grid-template-columns: 40px minmax(0, 1fr) 88px 48px;
+}
+
+.set-head {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.set-badge {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--line);
+  font-weight: 700;
+}
+
+.set-badge.warm { background: #f0b429; color: #3a2a00; }
+
+.previous-cell { color: #8a847a; font-size: 0.95rem; }
+
+.set-line input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+.set-line.done {
+  background: var(--accent-soft);
+  border-radius: 12px;
+}
+
+.set-table .tick {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 1.35rem;
+}
+
+.add-set, .add-exercise {
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.link-import { display: grid; gap: 8px; }
+
+.link-import textarea { min-height: 72px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }

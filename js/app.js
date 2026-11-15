@@ -14,7 +14,8 @@ import {
   createBackup,
 } from './logic.js'
 import { createTrainer } from './train.js'
-import { doneSetCount, sessionMinutes } from './gym.js'
+import { BUILT_IN_EXERCISES, doneSetCount, sessionMinutes } from './gym.js'
+import { decodeRoutineLink, importRoutine } from './routine-link.js'
 import {
   createPinRecord,
   lockoutRemainingMs,
@@ -98,6 +99,8 @@ const unlockButton = document.querySelector('#unlock-button')
 const unlockPin = document.querySelector('#unlock-pin')
 const settingsDialog = document.querySelector('#settings')
 const settingsError = document.querySelector('#settings-error')
+const routineLinkDialog = document.querySelector('#routine-link')
+const routineLinkTitle = document.querySelector('#routine-link-title')
 
 let workouts = []
 let routines = []
@@ -138,6 +141,15 @@ confirmCancel.addEventListener('click', () => {
 confirmDelete.addEventListener('click', onDelete)
 editor.addEventListener('close', () => {
   confirmPanel.hidden = true
+})
+document.querySelector('#routine-link-cancel').addEventListener('click', () => {
+  clearRoutineHash()
+  routineLinkDialog.close()
+})
+document.querySelector('#routine-link-add').addEventListener('click', async (event) => {
+  event.currentTarget.disabled = true
+  const result = await importLink(location.hash)
+  if (!result?.ok) event.currentTarget.disabled = false
 })
 document.querySelector('#backup-button').addEventListener('click', openBackup)
 document.querySelector('#backup-close').addEventListener('click', () => backupDialog.close())
@@ -330,6 +342,7 @@ async function unlockApp() {
     showBanner('Could not open saved workouts on this phone.')
   }
   render()
+  offerRoutineLink()
 }
 
 function lockApp() {
@@ -343,6 +356,7 @@ function lockApp() {
   if (editor.open) editor.close()
   if (backupDialog.open) backupDialog.close()
   if (settingsDialog.open) settingsDialog.close()
+  if (routineLinkDialog.open) routineLinkDialog.close()
   main.replaceChildren()
   shell.hidden = true
   unlockPin.value = ''
@@ -758,7 +772,41 @@ const trainer = createTrainer({
     await putExercise(exercise)
     upsert(customExercises, exercise)
   },
+  importLink,
 })
+
+function offerRoutineLink() {
+  const decoded = decodeRoutineLink(location.hash)
+  if (!decoded.ok || routineLinkDialog.open) return
+  routineLinkTitle.textContent = `Add routine “${decoded.routine.name}”?`
+  routineLinkDialog.showModal()
+}
+
+function clearRoutineHash() {
+  if (!location.hash.startsWith('#routine=')) return
+  history.replaceState(null, '', `${location.pathname}${location.search}`)
+}
+
+async function importLink(text) {
+  const planned = importRoutine(text, {
+    builtIn: BUILT_IN_EXERCISES,
+    exercises: customExercises,
+    routines,
+    newId,
+  })
+  if (!planned.ok) return { ok: false }
+  for (const exercise of planned.newExercises) {
+    await putExercise(exercise)
+    customExercises.push(exercise)
+  }
+  await putRoutine(planned.routine)
+  routines.push(planned.routine)
+  clearRoutineHash()
+  if (routineLinkDialog.open) routineLinkDialog.close()
+  showScreen('train')
+  showBanner(`Added “${planned.routine.name}”.`, 'success')
+  return { ok: true }
+}
 
 function upsert(list, record) {
   const index = list.findIndex((item) => item.id === record.id)
