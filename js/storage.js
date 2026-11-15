@@ -1,9 +1,10 @@
 import { foodFromStored } from './food.js'
+import { weightFromStored } from './overview.js'
 import { workoutFromStored, workoutToStored } from './logic.js'
 import { planFromStored } from './plan.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 6
+const DB_VERSION = 7
 const STORE = 'workouts'
 const SETTINGS = 'settings'
 const ROUTINES = 'routines'
@@ -12,6 +13,7 @@ const EXERCISES = 'exercises'
 const PLANS = 'plans'
 const FOODS = 'foods'
 const PRODUCTS = 'products'
+const WEIGHTS = 'weights'
 let databasePromise
 
 function openDatabase() {
@@ -31,6 +33,9 @@ function openDatabase() {
         }
         if (!database.objectStoreNames.contains(PRODUCTS)) {
           database.createObjectStore(PRODUCTS, { keyPath: 'barcode' })
+        }
+        if (!database.objectStoreNames.contains(WEIGHTS)) {
+          database.createObjectStore(WEIGHTS, { keyPath: 'id' })
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -156,6 +161,23 @@ export function deleteFood(id) {
 
 export function replaceFoods(foods) {
   return replaceAll(FOODS, foods)
+}
+
+export async function loadWeights() {
+  const rows = await readAll(WEIGHTS)
+  return rows.map(weightFromStored).filter(Boolean)
+}
+
+export function putWeight(entry) {
+  return putRecord(WEIGHTS, entry)
+}
+
+export function deleteWeight(id) {
+  return deleteRecord(WEIGHTS, id)
+}
+
+export function replaceWeights(weights) {
+  return replaceAll(WEIGHTS, weights)
 }
 
 export function loadProducts() {

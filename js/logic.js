@@ -1,5 +1,6 @@
 import { foodFromStored, foodProfileFromStored, foodToStored } from './food.js'
 import { planFromStored, planToStored } from './plan.js'
+import { weightFromStored } from './overview.js'
 import { trainingPlanFromStored } from './training-plan.js'
 
 export const WORKOUT_TYPES = [
@@ -12,7 +13,7 @@ export const WORKOUT_TYPES = [
   { id: 'other', title: 'Other' },
 ]
 
-export const BACKUP_VERSION = 5
+export const BACKUP_VERSION = 6
 
 const MESSAGES = {
   typeMissing: 'Choose a workout type.',
@@ -31,6 +32,7 @@ const MESSAGES = {
   backupSession: 'This backup contains a gym session that could not be read.',
   backupPlan: 'This backup contains a plan that could not be read.',
   backupFood: 'This backup contains a food entry that could not be read.',
+  backupWeight: 'This backup contains a weight entry that could not be read.',
   backupFoodProfile: 'This backup contains a calorie profile that could not be read.',
 }
 
@@ -101,6 +103,7 @@ export function createBackup(workouts, exportedAt = new Date(), extra = {}) {
     kcalTarget: extra.kcalTarget ?? null,
     foodProfile: extra.foodProfile ?? null,
     trainingPlan: extra.trainingPlan ?? null,
+    weights: (extra.weights ?? []).slice().sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id)),
   }
 }
 
@@ -120,7 +123,7 @@ export function parseBackup(input) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) {
     return { ok: false, error: 'backupNotFitness' }
   }
-  if (![1, 2, 3, 4, 5].includes(document.version)) {
+  if (![1, 2, 3, 4, 5, 6].includes(document.version)) {
     return { ok: false, error: 'backupVersion' }
   }
   if (!Array.isArray(document.workouts)) {
@@ -130,7 +133,7 @@ export function parseBackup(input) {
   const workouts = readRecords(document.workouts, workoutFromStored, 'backupWorkout')
   if (!workouts.ok) return workouts
   if (document.version === 1) {
-    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [], plans: [], foods: [], kcalTarget: null, foodProfile: null, trainingPlan: null }
+    return { ok: true, workouts: workouts.items, exercises: [], routines: [], sessions: [], plans: [], foods: [], kcalTarget: null, foodProfile: null, trainingPlan: null, weights: [] }
   }
 
   const exercises = readRecords(document.exercises ?? [], exerciseFromStored, 'backupExercise')
@@ -153,6 +156,10 @@ export function parseBackup(input) {
   if (foodProfile === undefined) return { ok: false, error: 'backupFoodProfile' }
   const trainingPlan = document.version >= 5 ? trainingPlanFromStored(document.trainingPlan ?? null) : null
   if (trainingPlan === undefined) return { ok: false, error: 'backupPlan' }
+  const weights = document.version >= 6
+    ? readRecords(document.weights ?? [], weightFromStored, 'backupWeight')
+    : { ok: true, items: [] }
+  if (!weights.ok) return weights
   return {
     ok: true,
     workouts: workouts.items,
@@ -164,6 +171,7 @@ export function parseBackup(input) {
     kcalTarget,
     foodProfile,
     trainingPlan,
+    weights: weights.items,
   }
 }
 

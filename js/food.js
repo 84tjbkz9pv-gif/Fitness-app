@@ -203,7 +203,7 @@ export function latestWeightKg(weights) {
   const sorted = (weights ?? [])
     .filter((item) => item && typeof item.kg === 'number' && item.kg > 0)
     .slice()
-    .sort((left, right) => String(right.at).localeCompare(String(left.at)))
+    .sort((left, right) => String(right.date ?? right.at).localeCompare(String(left.date ?? left.at)))
   return sorted[0]?.kg ?? null
 }
 
