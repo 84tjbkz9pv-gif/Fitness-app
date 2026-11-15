@@ -20,6 +20,8 @@ import {
   setBadge,
 } from './gym.js'
 import { longDate, timeLabel } from './logic.js'
+import { londonKey } from './plan.js'
+import { suggestExerciseWeights } from './training-plan.js'
 
 export function createTrainer(api) {
   let mode = 'home'
@@ -286,15 +288,35 @@ export function createTrainer(api) {
       routineId: routine.id,
       startedAt,
       finishedAt: null,
-      exercises: routine.exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        repsOnly: exercise.repsOnly === true,
-        sets: exercise.sets.map((set, setIndex) => loggingSet(exercise, set, setIndex, startedAt)),
-      })),
+      exercises: routine.exercises.map((exercise) => {
+        const planned = api.plans?.().some((plan) => plan.routineId === routine.id && plan.date === londonKey(startedAt))
+        const suggestions = planned ? suggestExerciseWeights({
+          name: exerciseName(exercise.exerciseId, api.exercises()),
+          targets: exercise.sets,
+          lastSets: lastSetsFor(exercise.exerciseId, startedAt),
+        }) : []
+        const byIndex = new Map(suggestions.map((item) => [item.index, item]))
+        return {
+          exerciseId: exercise.exerciseId,
+          repsOnly: exercise.repsOnly === true,
+          sets: exercise.sets.map((set, setIndex) => loggingSet(exercise, set, setIndex, startedAt, byIndex.get(setIndex))),
+        }
+      }),
     })
   }
 
-  function loggingSet(exercise, set, setIndex, startedAt) {
+  function lastSetsFor(exerciseId, before) {
+    const sessions = api.sessions()
+      .filter((session) => session.finishedAt && session.startedAt < before)
+      .sort((left, right) => right.startedAt - left.startedAt)
+    for (const session of sessions) {
+      const exercise = session.exercises.find((item) => item.exerciseId === exerciseId)
+      if (exercise) return exercise.sets
+    }
+    return null
+  }
+
+  function loggingSet(exercise, set, setIndex, startedAt, suggestion) {
     const previous = previousSet(api.sessions(), {
       exerciseId: exercise.exerciseId,
       setIndex,
@@ -304,13 +326,15 @@ export function createTrainer(api) {
     const reference = previous
       ? { weightKg: previous.weightKg, reps: previous.reps }
       : { weightKg: set.weightKg ?? null, reps: set.reps ?? null }
+    const suggested = !repsOnly && suggestion?.weightKg > 0 ? suggestion.weightKg : null
     return {
-      weightKg: repsOnly ? null : reference.weightKg,
+      weightKg: suggested ?? (repsOnly ? null : reference.weightKg),
       reps: reference.reps,
       done: false,
       warmUp: set.warmUp === true,
       referenceWeightKg: repsOnly ? null : reference.weightKg,
       referenceReps: reference.reps,
+      hint: suggestion?.bumped ? `Suggested ${formatKg(suggestion.weightKg)} kg` : null,
     }
   }
 
@@ -430,6 +454,13 @@ export function createTrainer(api) {
     })
     header.append(name, remove)
     block.append(header)
+    const hint = exercise.sets.find((set) => set.hint)?.hint
+    if (hint) {
+      const note = document.createElement('p')
+      note.className = 'help'
+      note.textContent = hint
+      block.append(note)
+    }
 
     const table = document.createElement('div')
     table.className = exercise.repsOnly ? 'set-table reps-only' : 'set-table'

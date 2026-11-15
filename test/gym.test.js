@@ -146,7 +146,7 @@ test('a version 1 backup imports with empty gym data', () => {
     routines: [routine],
     sessions: [gymSession],
   })
-  assert.equal(backup.version, 4)
+  assert.equal(backup.version, 5)
   const roundTrip = parseBackup(JSON.stringify(backup))
   assert.equal(roundTrip.ok, true)
   assert.equal(roundTrip.routines[0].name, 'Push day')

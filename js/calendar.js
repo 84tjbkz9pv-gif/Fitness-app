@@ -1,4 +1,5 @@
 import { doneSetCount, exerciseName, sessionMinutes } from './gym.js'
+import { formatKcal } from './food.js'
 import { durationLabel } from './logic.js'
 import {
   calendarMondays,
@@ -25,6 +26,12 @@ export function todayPlanner(state, actions) {
 export function calendarView(state, actions) {
   const wrap = document.createElement('div')
   wrap.className = 'calendar'
+  const planButton = document.createElement('button')
+  planButton.type = 'button'
+  planButton.className = 'pill'
+  planButton.textContent = state.trainingPlan ? 'Edit plan' : 'Make a plan'
+  planButton.addEventListener('click', () => actions.editTrainingPlan())
+  wrap.append(planButton)
   const dates = [
     ...state.plans.map((plan) => plan.date),
     ...state.sessions.filter((session) => session.finishedAt).map((session) => londonKey(session.startedAt)),
@@ -136,6 +143,15 @@ function calendarDay(date, state, actions) {
   body.className = 'cal-body'
   const content = dayContent(date, state)
   appendDayCards(body, date, content, state, actions, false)
+  if (content.dayPlans.length === 0 && state.kcalFor) {
+    const kcal = state.kcalFor(date)
+    if (kcal != null) {
+      const rest = document.createElement('p')
+      rest.className = 'help'
+      rest.textContent = `${formatKcal(kcal)} kcal`
+      body.append(rest)
+    }
+  }
   if (content.dayPlans.length === 0) {
     body.append(addButton(() => chooseRoutine(state.routines, (routine) => actions.addPlan(date, routine.id))))
   }
@@ -147,20 +163,21 @@ function appendDayCards(parent, date, content, state, actions, withStart) {
   for (const item of content.dayPlans) {
     if (item.session) parent.append(doneCard(item.routine?.name ?? item.session.name, gymSummary(item.session)))
     else if (!item.routine) parent.append(missingCard(item.plan, actions))
-    else parent.append(planCard(item, state, actions, withStart))
+    else parent.append(planCard(item, state, actions, withStart, date))
   }
   for (const session of content.extraSessions) parent.append(doneCard(session.name, gymSummary(session)))
   for (const workout of content.cardio) parent.append(doneCard(workoutTitle(workout), cardioSummary(workout)))
   void date
 }
 
-function planCard(item, state, actions, withStart) {
+function planCard(item, state, actions, withStart, date) {
   const card = document.createElement('article')
   card.className = 'plan-card'
   const open = document.createElement('button')
   open.type = 'button'
   open.className = 'plan-open'
-  open.textContent = item.routine.name
+  const kcal = state.kcalFor?.(date)
+  open.textContent = kcal == null ? item.routine.name : `${item.routine.name} · ${formatKcal(kcal)} kcal`
   open.addEventListener('click', () => chooseMove(item.plan, item.routine.name, actions))
   card.append(open)
   const list = document.createElement('ul')

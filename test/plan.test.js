@@ -96,7 +96,7 @@ test('plan entries round trip in a version 3 backup and older backups stay empty
       { id: 'plan-a', date: '2026-11-15', routineId: 'legs' },
     ],
   })
-  assert.equal(backup.version, 4)
+  assert.equal(backup.version, 5)
   assert.deepEqual(backup.plans.map((plan) => plan.id), ['plan-a', 'plan-b'])
   const parsed = parseBackup(JSON.stringify(backup))
   assert.deepEqual(parsed.plans, backup.plans)
