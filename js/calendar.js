@@ -1,5 +1,6 @@
 import { doneSetCount, exerciseName, sessionMinutes } from './gym.js'
 import { formatKcal } from './food.js'
+import { actualLine, dropRun, runTitle } from './runs.js'
 import { durationLabel } from './logic.js'
 import {
   calendarMondays,
@@ -123,7 +124,13 @@ function selectedDay(state, actions) {
   wrap.className = 'day-card'
   const content = dayContent(state.selectedKey, state)
   appendDayCards(wrap, state.selectedKey, content, state, actions, true)
-  if (content.dayPlans.length === 0) wrap.append(restCard(() => chooseRoutine(state.routines, (routine) => actions.addPlan(state.selectedKey, routine.id))))
+  appendRuns(wrap, state.selectedKey, state, actions, false)
+  if (content.dayPlans.length === 0 && runsOn(state.selectedKey, state).length === 0) {
+    wrap.append(restCard(
+      () => chooseRoutine(state.routines, (routine) => actions.addPlan(state.selectedKey, routine.id)),
+      () => actions.addRun(state.selectedKey),
+    ))
+  }
   return wrap
 }
 
@@ -143,6 +150,7 @@ function calendarDay(date, state, actions) {
   body.className = 'cal-body'
   const content = dayContent(date, state)
   appendDayCards(body, date, content, state, actions, false)
+  appendRuns(body, date, state, actions, true)
   if (content.dayPlans.length === 0 && state.kcalFor) {
     const kcal = state.kcalFor(date)
     if (kcal != null) {
@@ -152,8 +160,9 @@ function calendarDay(date, state, actions) {
       body.append(rest)
     }
   }
-  if (content.dayPlans.length === 0) {
+  if (content.dayPlans.length === 0 && runsOn(date, state).length === 0) {
     body.append(addButton(() => chooseRoutine(state.routines, (routine) => actions.addPlan(date, routine.id))))
+    body.append(addRunButton(() => actions.addRun(date)))
   }
   row.append(label, body)
   return row
@@ -201,7 +210,7 @@ function planCard(item, state, actions, withStart, date) {
   return card
 }
 
-function enableDrag(card, plan, state, actions) {
+function enableDrag(card, record, state, actions, kind = 'plan') {
   card.classList.add('can-drag')
   let pointerId = null
   let startX = 0
@@ -288,11 +297,16 @@ function enableDrag(card, plan, state, actions) {
       ? { x: lastX, y: lastY }
       : { x: event.clientX, y: event.clientY }
     const to = wasDragging ? rowAtPoint(dayRects(), point.x, point.y) : null
-    const decision = wasDragging
-      ? dropAction(state.plans, plan.id, plan.date, to)
-      : { action: 'cancel' }
+    const decision = !wasDragging
+      ? { action: 'cancel' }
+      : kind === 'run'
+        ? dropRun(state.runs ?? [], state.plans, record.id, record.date, to)
+        : dropAction(state.plans, record.id, record.date, to, (state.runs ?? []).map((run) => run.date))
     stopDrag()
-    if (decision.action === 'move' || decision.action === 'blocked') actions.movePlan(plan.id, to)
+    if (decision.action === 'move' || decision.action === 'blocked') {
+      if (kind === 'run') actions.moveRun(record.id, to)
+      else actions.movePlan(record.id, to)
+    }
   }
 
   function cancelHold() {
@@ -365,13 +379,53 @@ function missingCard(plan, actions) {
   return card
 }
 
-function restCard(onAdd) {
+function restCard(onAdd, onRun) {
   const card = document.createElement('article')
   card.className = 'plan-card rest'
   const title = document.createElement('h2')
   title.textContent = 'Rest day'
   card.append(title, addButton(onAdd))
+  if (onRun) card.append(addRunButton(onRun))
   return card
+}
+
+function runsOn(date, state) {
+  return (state.runs ?? []).filter((run) => run.date === date)
+}
+
+function appendRuns(parent, date, state, actions, draggable) {
+  for (const run of runsOn(date, state)) parent.append(runCard(run, state, actions, draggable))
+}
+
+function runCard(run, state, actions, draggable) {
+  const card = document.createElement('article')
+  card.className = 'plan-card'
+  const open = document.createElement('button')
+  open.type = 'button'
+  open.className = 'plan-open'
+  open.textContent = runTitle(run)
+  open.addEventListener('click', () => actions.editRun(run))
+  const line = document.createElement('p')
+  line.className = 'plan-summary'
+  line.textContent = actualLine(run)
+  card.append(open, line)
+  if (run.notes) {
+    const notes = document.createElement('p')
+    notes.className = 'help'
+    notes.textContent = run.notes
+    card.append(notes)
+  }
+  if (draggable) enableDrag(card, run, state, actions, 'run')
+  return card
+}
+
+function addRunButton(onAdd) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'text-add'
+  button.textContent = 'Add run'
+  button.addEventListener('click', onAdd)
+  return button
 }
 
 function addButton(onAdd) {
@@ -476,6 +530,7 @@ function chooseMove(plan, name, actions) {
 function dayIsMarked(date, state) {
   if (typeof state.markDay === 'function') return state.markDay(date)
   if (state.plans.some((plan) => plan.date === date)) return true
+  if ((state.runs ?? []).some((run) => run.date === date)) return true
   if (state.sessions.some((session) => session.finishedAt && londonKey(session.startedAt) === date)) return true
   return state.workouts.some((workout) => londonKey(workout.startedAt) === date)
 }

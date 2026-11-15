@@ -43,7 +43,7 @@ export function withinTarget(eaten, target, losing) {
   return Math.abs(eaten - target) / target <= 0.1
 }
 
-export function weekReport({ monday, today, foods, plans, sessions, targetFor, losing }) {
+export function weekReport({ monday, today, foods, plans, sessions, runs, targetFor, losing }) {
   const days = weekDays(monday).filter((date) => date <= today)
   let logged = 0
   let onTarget = 0
@@ -61,7 +61,15 @@ export function weekReport({ monday, today, foods, plans, sessions, targetFor, l
     && session.routineId === plan.routineId
     && londonKey(session.startedAt) === plan.date
   )))
-  return { monday, onTarget, logged, planned: planned.length, done: done.length }
+  const plannedRuns = (runs ?? []).filter((run) => run.date >= monday && run.date <= end && run.date <= today)
+  const doneRuns = plannedRuns.filter((run) => run.actualMinutes > 0 && run.actualDistanceKm > 0)
+  return {
+    monday,
+    onTarget,
+    logged,
+    planned: planned.length + plannedRuns.length,
+    done: done.length + doneRuns.length,
+  }
 }
 
 export function recentWeekReports(input) {
