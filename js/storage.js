@@ -1,9 +1,12 @@
 import { workoutFromStored, workoutToStored } from './logic.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const STORE = 'workouts'
 const SETTINGS = 'settings'
+const ROUTINES = 'routines'
+const SESSIONS = 'sessions'
+const EXERCISES = 'exercises'
 let databasePromise
 
 function openDatabase() {
@@ -17,6 +20,9 @@ function openDatabase() {
         }
         if (!database.objectStoreNames.contains(SETTINGS)) {
           database.createObjectStore(SETTINGS)
+        }
+        for (const name of [ROUTINES, SESSIONS, EXERCISES]) {
+          if (!database.objectStoreNames.contains(name)) database.createObjectStore(name, { keyPath: 'id' })
         }
       }
       request.onsuccess = () => resolve(request.result)
@@ -59,6 +65,110 @@ export async function replaceWorkouts(workouts) {
     clearRequest.onerror = () => reject(clearRequest.error)
     clearRequest.onsuccess = () => {
       for (const row of stored) store.put(row)
+    }
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+  })
+}
+
+export function loadRoutines() {
+  return readAll(ROUTINES)
+}
+
+export function putRoutine(routine) {
+  return putRecord(ROUTINES, routine)
+}
+
+export function deleteRoutine(id) {
+  return deleteRecord(ROUTINES, id)
+}
+
+export function replaceRoutines(routines) {
+  return replaceAll(ROUTINES, routines)
+}
+
+export function loadSessions() {
+  return readAll(SESSIONS)
+}
+
+export function deleteSession(id) {
+  return deleteRecord(SESSIONS, id)
+}
+
+export function putSession(session) {
+  return putRecord(SESSIONS, sessionToRow(session))
+}
+
+export function replaceSessions(sessions) {
+  return replaceAll(SESSIONS, sessions.map(sessionToRow))
+}
+
+export function loadExercises() {
+  return readAll(EXERCISES)
+}
+
+export function putExercise(exercise) {
+  return putRecord(EXERCISES, exercise)
+}
+
+export function replaceExercises(exercises) {
+  return replaceAll(EXERCISES, exercises)
+}
+
+function sessionToRow(session) {
+  return {
+    ...session,
+    startedAt: session.startedAt.toISOString(),
+    finishedAt: session.finishedAt ? session.finishedAt.toISOString() : null,
+  }
+}
+
+function sessionFromRow(row) {
+  return {
+    ...row,
+    startedAt: new Date(row.startedAt),
+    finishedAt: row.finishedAt ? new Date(row.finishedAt) : null,
+  }
+}
+
+async function readAll(storeName) {
+  const database = await openDatabase()
+  const rows = await new Promise((resolve, reject) => {
+    const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  return storeName === SESSIONS ? rows.map(sessionFromRow) : rows
+}
+
+async function putRecord(storeName, record) {
+  const database = await openDatabase()
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(storeName, 'readwrite').objectStore(storeName).put(record)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function deleteRecord(storeName, id) {
+  const database = await openDatabase()
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(storeName, 'readwrite').objectStore(storeName).delete(id)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function replaceAll(storeName, records) {
+  const database = await openDatabase()
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(storeName, 'readwrite')
+    const store = transaction.objectStore(storeName)
+    const clearRequest = store.clear()
+    clearRequest.onerror = () => reject(clearRequest.error)
+    clearRequest.onsuccess = () => {
+      for (const record of records) store.put(record)
     }
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)

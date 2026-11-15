@@ -10,6 +10,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 - Add a workout: type (run, walk, cycle, strength, swim, yoga, or other), start date and time, duration in minutes, optional distance in kilometres, and optional notes.
 - Edit or delete a workout.
 - Browse every logged workout, grouped by day. Today is included, under the heading Today.
+- On Train, save a gym routine, start it, and log kg and reps. Each set shows the numbers from the last time you did that exercise. Personal bests are marked when you finish, and each exercise has a progress chart.
 
 Lists use British dates, for example Sunday, 15 November 2026, and 24-hour times. The start control in the form follows the language and clock already set on the iPhone.
 

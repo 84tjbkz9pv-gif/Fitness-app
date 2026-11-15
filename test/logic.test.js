@@ -281,7 +281,10 @@ test('backup round trip keeps every workout', () => {
     }),
   ]
   const document = createBackup(records, exportedAt)
-  assert.equal(document.version, 1)
+  assert.equal(document.version, 2)
+  assert.deepEqual(document.exercises, [])
+  assert.deepEqual(document.routines, [])
+  assert.deepEqual(document.sessions, [])
   assert.equal(document.exportedAt, exportedAt.toISOString())
   assert.deepEqual(document.workouts.map((item) => item.id), ['earlier', 'later'])
   assert.equal(backupFilename(exportedAt), 'fitness-backup-2026-11-15.json')
@@ -305,7 +308,8 @@ test('backup import rejects a file that is not a backup', () => {
   assert.equal(parseBackup('not json').error, 'backupNotJson')
   assert.equal(parseBackup('[]').error, 'backupNotFitness')
   assert.equal(parseBackup('{"version":1}').error, 'backupNotFitness')
-  assert.equal(parseBackup('{"version":2,"workouts":[]}').error, 'backupVersion')
+  assert.equal(parseBackup('{"version":3,"workouts":[]}').error, 'backupVersion')
+  assert.equal(parseBackup('{"version":2,"workouts":[]}').ok, true)
   assert.equal(messageFor('backupVersion'), 'This backup is from a different version of Fitness.')
 
   const badWorkout = createBackup([workout({ id: 'ok' })])
