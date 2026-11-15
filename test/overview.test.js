@@ -60,22 +60,38 @@ test('a week counts food days against the day target and finished planned sessio
       finishedAt: new Date('2026-11-09T18:00:00.000Z'),
       startedAt: new Date('2026-11-09T17:00:00.000Z'),
     }],
+    runs: [
+      { date: '2026-11-15', actualMinutes: 32, actualDistanceKm: 5 },
+      { date: '2026-11-14', actualMinutes: null, actualDistanceKm: null },
+    ],
     targetFor: () => 2000,
     losing: true,
   })
   assert.equal(report.onTarget, 1)
   assert.equal(report.logged, 2)
-  assert.equal(report.planned, 2)
-  assert.equal(report.done, 1)
+  assert.equal(report.planned, 4)
+  assert.equal(report.done, 2)
 })
 
 test('weight entries round trip in a version 6 backup and older backups have none', () => {
   const backup = createBackup([], new Date('2026-11-15T12:00:00.000Z'), {
     weights: [{ id: 'w1', date: '2026-11-15', kg: 60.5 }],
   })
-  assert.equal(backup.version, 6)
+  assert.equal(backup.version, 7)
   const parsed = parseBackup(JSON.stringify(backup))
   assert.equal(parsed.weights[0].kg, 60.5)
+  assert.deepEqual(parsed.runs, [])
+  const version6 = parseBackup(JSON.stringify({
+    version: 6,
+    workouts: [],
+    exercises: [],
+    routines: [],
+    sessions: [],
+    plans: [],
+    weights: [{ id: 'w1', date: '2026-11-15', kg: 60.5 }],
+  }))
+  assert.equal(version6.weights[0].kg, 60.5)
+  assert.deepEqual(version6.runs, [])
   const older = parseBackup(JSON.stringify({ version: 5, workouts: [], exercises: [], routines: [], sessions: [], plans: [] }))
   assert.deepEqual(older.weights, [])
 })

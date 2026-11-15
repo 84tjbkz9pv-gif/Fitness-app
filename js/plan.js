@@ -109,8 +109,9 @@ export function rowAtPoint(rows, x, y) {
   return null
 }
 
-export function dropAction(plans, planId, fromDate, toDate) {
+export function dropAction(plans, planId, fromDate, toDate, takenDates = []) {
   if (!toDate || toDate === fromDate) return { action: 'cancel' }
+  if (takenDates.includes(toDate)) return { action: 'blocked' }
   const result = movePlan(plans, planId, toDate)
   if (!result.ok) return { action: result.error === 'alreadyPlanned' ? 'blocked' : 'cancel' }
   return { action: 'move', plans: result.plans }
