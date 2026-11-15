@@ -42,7 +42,7 @@ export function calendarView(state, actions) {
   return wrap
 }
 
-function weekStrip(state, actions) {
+export function weekStrip(state, actions) {
   const strip = document.createElement('div')
   strip.className = 'week-strip'
   strip.append(
@@ -89,7 +89,7 @@ function weekDaysRow(state, actions) {
     const marked = dayIsMarked(date, state)
     if (marked) button.classList.add('has-dot')
     button.setAttribute('aria-pressed', date === state.selectedKey ? 'true' : 'false')
-    button.setAttribute('aria-label', `${weekdayLabel(date)} ${dayNumber(date)}${marked ? ', has a workout' : ''}`)
+    button.setAttribute('aria-label', `${weekdayLabel(date)} ${dayNumber(date)}${marked ? `, ${state.markLabel ?? 'has a workout'}` : ''}`)
     const name = document.createElement('span')
     name.className = 'dow'
     name.textContent = weekdayLabel(date)
@@ -457,6 +457,7 @@ function chooseMove(plan, name, actions) {
 }
 
 function dayIsMarked(date, state) {
+  if (typeof state.markDay === 'function') return state.markDay(date)
   if (state.plans.some((plan) => plan.date === date)) return true
   if (state.sessions.some((session) => session.finishedAt && londonKey(session.startedAt) === date)) return true
   return state.workouts.some((workout) => londonKey(workout.startedAt) === date)

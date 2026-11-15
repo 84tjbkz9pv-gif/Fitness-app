@@ -8,6 +8,7 @@ Workouts stay in the browser on that phone. There is no account, server, analyti
 
 - See today's date and the workouts that started today. A week strip shows each day. Plan a routine on a day, then start it from Today.
 - Calendar lists each week. A planned routine can be moved to another day or removed. Press and hold a planned card, then drag it onto another day. A logged workout stays on the day it was done.
+- On Food, log breakfast, lunch, tea and snacks in kcal. A daily target is optional. The calculator uses the Mifflin-St Jeor formula and is an estimate, not advice.
 - Add a workout: type (run, walk, cycle, strength, swim, yoga, or other), start date and time, duration in minutes, optional distance in kilometres, and optional notes.
 - Edit or delete a workout.
 - Browse every logged workout, grouped by day. Today is included, under the heading Today.

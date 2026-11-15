@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f4f7f4">
+  <meta name="theme-color" content="#000000">
   <meta name="robots" content="noindex">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -68,6 +68,7 @@
       <button type="button" id="tab-today" data-screen="today" aria-current="page">Today</button>
       <button type="button" id="tab-train" data-screen="train">Train</button>
       <button type="button" id="tab-calendar" data-screen="calendar">Calendar</button>
+      <button type="button" id="tab-food" data-screen="food">Food</button>
       <button type="button" id="tab-history" data-screen="history">History</button>
     </nav>
   </div>
@@ -159,6 +160,9 @@
           <input id="new-pin-again" class="pin-input" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
         </label>
         <p id="settings-error" class="form-error" role="alert" hidden></p>
+        <h2 class="section-label">Calories</h2>
+        <p class="help">A daily target is optional. The calculator is an estimate, not advice.</p>
+        <button type="button" class="wide secondary" id="open-kcal-target">Set calorie target</button>
       </div>
     </form>
   </dialog>
