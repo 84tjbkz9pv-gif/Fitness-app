@@ -1,14 +1,16 @@
+import { foodFromStored } from './food.js'
 import { workoutFromStored, workoutToStored } from './logic.js'
 import { planFromStored } from './plan.js'
 
 const DB_NAME = 'fitness'
-const DB_VERSION = 4
+const DB_VERSION = 5
 const STORE = 'workouts'
 const SETTINGS = 'settings'
 const ROUTINES = 'routines'
 const SESSIONS = 'sessions'
 const EXERCISES = 'exercises'
 const PLANS = 'plans'
+const FOODS = 'foods'
 let databasePromise
 
 function openDatabase() {
@@ -23,7 +25,7 @@ function openDatabase() {
         if (!database.objectStoreNames.contains(SETTINGS)) {
           database.createObjectStore(SETTINGS)
         }
-        for (const name of [ROUTINES, SESSIONS, EXERCISES, PLANS]) {
+        for (const name of [ROUTINES, SESSIONS, EXERCISES, PLANS, FOODS]) {
           if (!database.objectStoreNames.contains(name)) database.createObjectStore(name, { keyPath: 'id' })
         }
       }
@@ -133,6 +135,40 @@ export function deletePlan(id) {
 
 export function replacePlans(plans) {
   return replaceAll(PLANS, plans)
+}
+
+export async function loadFoods() {
+  const rows = await readAll(FOODS)
+  return rows.map(foodFromStored).filter(Boolean)
+}
+
+export function putFood(entry) {
+  return putRecord(FOODS, entry)
+}
+
+export function deleteFood(id) {
+  return deleteRecord(FOODS, id)
+}
+
+export function replaceFoods(foods) {
+  return replaceAll(FOODS, foods)
+}
+
+export async function loadKcalTarget() {
+  const value = await readSetting('kcalTarget')
+  return Number.isInteger(value) && value >= 1 && value <= 10000 ? value : null
+}
+
+export async function saveKcalTarget(value) {
+  await writeSetting('kcalTarget', value)
+}
+
+export async function loadFoodProfile() {
+  return readSetting('foodProfile')
+}
+
+export async function saveFoodProfile(profile) {
+  await writeSetting('foodProfile', profile)
 }
 
 function sessionToRow(session) {

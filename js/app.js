@@ -15,6 +15,8 @@ import {
 } from './logic.js'
 import { createTrainer } from './train.js'
 import { calendarView, todayPlanner } from './calendar.js'
+import { copyMeal, emptyCopyMessage, foodProfileFromStored, yesterdayKey } from './food.js'
+import { foodScreen, foodTodayCard, openFoodDialog, openTargetSheet } from './food-view.js'
 import { addDays, londonKey, londonLong, mondayOf, movePlan, removePlan } from './plan.js'
 import { BUILT_IN_EXERCISES, doneSetCount, sessionMinutes } from './gym.js'
 import { decodeRoutineLink, importRoutine } from './routine-link.js'
@@ -33,24 +35,32 @@ import {
   loadLockout,
   loadPinRecord,
   loadExercises,
+  loadFoodProfile,
+  loadFoods,
+  loadKcalTarget,
   loadPlans,
   loadRoutines,
   loadSessions,
   loadWorkouts,
   putExercise,
+  putFood,
   putPlan,
   putRoutine,
   putSession,
   putWorkout,
+  deleteFood,
   deletePlan,
   deleteRoutine,
   deleteSession,
   removeWorkout,
   replaceExercises,
+  replaceFoods,
   replacePlans,
   replaceRoutines,
   replaceSessions,
   replaceWorkouts,
+  saveFoodProfile,
+  saveKcalTarget,
   saveLockout,
   savePinRecord,
   wipeAllData,
@@ -74,6 +84,7 @@ const addButton = document.querySelector('#add-button')
 const tabToday = document.querySelector('#tab-today')
 const tabTrain = document.querySelector('#tab-train')
 const tabCalendar = document.querySelector('#tab-calendar')
+const tabFood = document.querySelector('#tab-food')
 const tabHistory = document.querySelector('#tab-history')
 const editor = document.querySelector('#editor')
 const form = document.querySelector('#workout-form')
@@ -114,6 +125,9 @@ let routines = []
 let sessions = []
 let customExercises = []
 let plans = []
+let foods = []
+let kcalTarget = null
+let foodProfile = null
 let selectedKey = null
 let weekMonday = null
 let screen = 'today'
@@ -136,6 +150,7 @@ addButton.addEventListener('click', () => openEditor(null))
 tabToday.addEventListener('click', () => showScreen('today'))
 tabTrain.addEventListener('click', () => showScreen('train'))
 tabCalendar.addEventListener('click', () => showScreen('calendar'))
+tabFood.addEventListener('click', () => showScreen('food'))
 tabHistory.addEventListener('click', () => showScreen('history'))
 main.addEventListener('click', onMainClick)
 form.addEventListener('submit', onSave)
@@ -177,6 +192,7 @@ document.querySelector('#forgot-pin').addEventListener('click', () => showGate('
 document.querySelector('#reset-cancel').addEventListener('click', () => showGate('unlock'))
 resetForm.addEventListener('submit', onReset)
 document.querySelector('#settings-button').addEventListener('click', openSettings)
+document.querySelector('#open-kcal-target').addEventListener('click', () => showCalorieTarget())
 document.querySelector('#settings-close').addEventListener('click', () => settingsDialog.close())
 document.querySelector('#pin-change-form').addEventListener('submit', onChangePin)
 document.addEventListener('visibilitychange', onVisibility)
@@ -278,6 +294,10 @@ async function onReset(event) {
   routines = []
   sessions = []
   customExercises = []
+  plans = []
+  foods = []
+  kcalTarget = null
+  foodProfile = null
   trainer.reset()
   clearInterval(lockTimer)
   document.querySelector('#setup-pin').value = ''
@@ -345,13 +365,18 @@ async function unlockApp() {
   gate.hidden = true
   shell.hidden = false
   try {
-    ;[workouts, routines, sessions, customExercises, plans] = await Promise.all([
+    ;[workouts, routines, sessions, customExercises, plans, foods, kcalTarget, foodProfile] = await Promise.all([
       loadWorkouts(),
       loadRoutines(),
       loadSessions(),
       loadExercises(),
       loadPlans(),
+      loadFoods(),
+      loadKcalTarget(),
+      loadFoodProfile(),
     ])
+    foodProfile = foodProfileFromStored(foodProfile)
+    if (foodProfile === undefined) foodProfile = null
   } catch (error) {
     console.error(error)
     workouts = []
@@ -359,6 +384,9 @@ async function unlockApp() {
     sessions = []
     customExercises = []
     plans = []
+    foods = []
+    kcalTarget = null
+    foodProfile = null
     showBanner('Could not open saved workouts on this phone.')
   }
   render()
@@ -372,6 +400,9 @@ function lockApp() {
   sessions = []
   customExercises = []
   plans = []
+  foods = []
+  kcalTarget = null
+  foodProfile = null
   selectedKey = null
   weekMonday = null
   trainer.reset()
@@ -423,14 +454,15 @@ function showScreen(next) {
 
 function render() {
   const now = new Date()
-  const titles = { today: 'Today', train: 'Train', calendar: 'Calendar', history: 'History' }
+  const titles = { today: 'Today', train: 'Train', calendar: 'Calendar', food: 'Food', history: 'History' }
   screenTitle.textContent = titles[screen]
   const selection = plannerSelection(now)
-  screenDate.textContent = screen === 'today' ? londonLong(selection.selectedKey) : ''
-  screenDate.hidden = screen !== 'today'
+  screenDate.textContent = screen === 'today' || screen === 'food' ? londonLong(selection.selectedKey) : ''
+  screenDate.hidden = screen !== 'today' && screen !== 'food'
   tabToday.setAttribute('aria-current', screen === 'today' ? 'page' : 'false')
   tabTrain.setAttribute('aria-current', screen === 'train' ? 'page' : 'false')
   tabCalendar.setAttribute('aria-current', screen === 'calendar' ? 'page' : 'false')
+  tabFood.setAttribute('aria-current', screen === 'food' ? 'page' : 'false')
   tabHistory.setAttribute('aria-current', screen === 'history' ? 'page' : 'false')
   if (screen === 'train') {
     trainer.render(main)
@@ -440,9 +472,17 @@ function render() {
     main.replaceChildren(calendarView(plannerState(selection), plannerActions()))
     return
   }
-  main.replaceChildren(screen === 'today'
-    ? todayPlanner(plannerState(selection), plannerActions())
-    : historyView(now))
+  if (screen === 'food') {
+    main.replaceChildren(foodScreen(foodState(selection), foodActions()))
+    return
+  }
+  if (screen === 'today') {
+    const today = todayPlanner(plannerState(selection), plannerActions())
+    today.append(foodTodayCard(foodState(selection), () => showScreen('food')))
+    main.replaceChildren(today)
+    return
+  }
+  main.replaceChildren(historyView(now))
 }
 
 function plannerSelection(now) {
@@ -462,6 +502,150 @@ function plannerState(selection) {
     sessions,
     workouts,
     exercises: customExercises,
+  }
+}
+
+function foodState(selection) {
+  return {
+    ...selection,
+    foods,
+    kcalTarget,
+    profile: foodProfile,
+    weightKg: null,
+  }
+}
+
+function foodActions() {
+  return {
+    selectDay(date) {
+      selectedKey = date
+      weekMonday = mondayOf(date)
+      render()
+    },
+    shiftWeek(delta) {
+      selectedKey = addDays(selectedKey, delta * 7)
+      weekMonday = addDays(weekMonday, delta * 7)
+      render()
+    },
+    addFood(meal) {
+      openFoodDialog({ meal, entry: null, foods, date: selectedKey }, foodSaveActions())
+    },
+    editFood(entry) {
+      openFoodDialog({ meal: entry.meal, entry, foods, date: entry.date }, foodSaveActions())
+    },
+    openTarget() {
+      showCalorieTarget()
+    },
+  }
+}
+
+function showCalorieTarget() {
+  const selection = plannerSelection(new Date())
+  openTargetSheet(foodState(selection), {
+    rememberProfile(profile) {
+      foodProfile = profile
+      saveFoodProfile(profile).catch((error) => console.error(error))
+    },
+    useTarget(profile, target) {
+      foodProfile = profile
+      kcalTarget = target
+      Promise.all([saveFoodProfile(profile), saveKcalTarget(target)])
+        .then(() => render())
+        .catch((error) => {
+          console.error(error)
+          showBanner('Could not save this target on this phone.')
+        })
+    },
+    saveTarget(target) {
+      kcalTarget = target
+      saveKcalTarget(target)
+        .then(() => render())
+        .catch((error) => {
+          console.error(error)
+          showBanner('Could not save this target on this phone.')
+        })
+    },
+  })
+}
+
+async function saveFood(value) {
+  const entry = {
+    id: value.id ?? newId(),
+    date: value.date,
+    meal: value.meal,
+    name: value.name,
+    amount: value.amount,
+    kcal: value.kcal,
+    proteinG: value.proteinG,
+    carbsG: value.carbsG,
+    fatG: value.fatG,
+    barcode: value.barcode,
+    createdAt: foods.find((item) => item.id === value.id)?.createdAt ?? new Date().toISOString(),
+  }
+  try {
+    await putFood(entry)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not save this food on this phone.')
+    return
+  }
+  const index = foods.findIndex((item) => item.id === entry.id)
+  if (index === -1) foods.push(entry)
+  else foods[index] = entry
+  render()
+}
+
+async function removeFood(id) {
+  try {
+    await deleteFood(id)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not delete this food on this phone.')
+    return
+  }
+  foods = foods.filter((item) => item.id !== id)
+  render()
+}
+
+async function copyYesterday(meal) {
+  const fromDate = yesterdayKey(selectedKey)
+  const copies = copyMeal(foods, fromDate, selectedKey, meal, newId, new Date().toISOString())
+  if (copies.length === 0) {
+    showBanner(emptyCopyMessage(meal))
+    return
+  }
+  try {
+    for (const entry of copies) await putFood(entry)
+  } catch (error) {
+    console.error(error)
+    showBanner('Could not copy that meal on this phone.')
+    return
+  }
+  foods.push(...copies)
+  render()
+}
+
+async function addRecent(entry, meal) {
+  await saveFood({
+    id: null,
+    date: selectedKey,
+    meal,
+    name: entry.name,
+    amount: entry.amount,
+    kcal: entry.kcal,
+    proteinG: entry.proteinG,
+    carbsG: entry.carbsG,
+    fatG: entry.fatG,
+    barcode: entry.barcode,
+  })
+}
+
+function foodSaveActions() {
+  return {
+    saveFood,
+    deleteFood: removeFood,
+    copyYesterday,
+    addRecent,
   }
 }
 
@@ -767,6 +951,9 @@ async function exportBackup() {
       routines,
       sessions,
       plans,
+      foods,
+      kcalTarget,
+      foodProfile,
     }), null, 2)}\n`],
     backupFilename(exportedAt),
     { type: 'application/json' },
@@ -825,6 +1012,9 @@ async function importBackup() {
     await replaceSessions(pendingImport.sessions)
     await replaceExercises(pendingImport.exercises)
     await replacePlans(pendingImport.plans ?? [])
+    await replaceFoods(pendingImport.foods ?? [])
+    await saveKcalTarget(pendingImport.kcalTarget ?? null)
+    await saveFoodProfile(pendingImport.foodProfile ?? null)
   } catch (error) {
     console.error(error)
     showBackupMessage('Could not import this backup on this phone.')
@@ -835,6 +1025,9 @@ async function importBackup() {
   sessions = pendingImport.sessions
   customExercises = pendingImport.exercises
   plans = pendingImport.plans ?? []
+  foods = pendingImport.foods ?? []
+  kcalTarget = pendingImport.kcalTarget ?? null
+  foodProfile = pendingImport.foodProfile ?? null
   trainer.reset()
   backupDialog.close()
   render()
@@ -842,7 +1035,7 @@ async function importBackup() {
 }
 
 function importSummaryText(count) {
-  const tail = 'Importing replaces the workouts, routines, gym sessions, and plan on this phone.'
+  const tail = 'Importing replaces the workouts, routines, gym sessions, plan, and food log on this phone.'
   if (count === 0) return `This backup has no workouts. ${tail}`
   if (count === 1) return `This backup has 1 workout. ${tail}`
   return `This backup has ${count} workouts. ${tail}`
